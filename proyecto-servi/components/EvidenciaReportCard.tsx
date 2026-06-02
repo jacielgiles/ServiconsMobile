@@ -1,7 +1,9 @@
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import type { EvidenceStampMeta } from '../lib/evidenceMeta';
 import { GoogleMapsActions } from './GoogleMapsActions';
 import { ReportMapView } from './ReportMapView';
+import { StampedEvidenceImage } from './StampedEvidenceImage';
 
 type Props = {
   index: number;
@@ -10,6 +12,7 @@ type Props = {
   timestamp: string;
   urlImagen?: string | null;
   observaciones?: string | null;
+  metadata?: EvidenceStampMeta | Record<string, unknown> | null;
   compact?: boolean;
 };
 
@@ -20,9 +23,11 @@ export function EvidenciaReportCard({
   timestamp,
   urlImagen,
   observaciones,
+  metadata,
   compact = false,
 }: Props) {
   const when = new Date(timestamp);
+  const stamp = metadata as EvidenceStampMeta | undefined;
 
   return (
     <View className="mb-4 overflow-hidden rounded-2xl border border-servi-borde bg-servi-superficie">
@@ -57,11 +62,29 @@ export function EvidenciaReportCard({
         </View>
 
         {urlImagen ? (
-          <Image
-            source={{ uri: urlImagen }}
-            className="mt-3 h-44 w-full rounded-xl bg-servi-fondo"
-            resizeMode="cover"
-          />
+          stamp ? (
+            <View className="mt-3">
+              <StampedEvidenceImage uri={urlImagen} meta={stamp} height={compact ? 180 : 220} />
+            </View>
+          ) : (
+            <View className="mt-3 overflow-hidden rounded-xl">
+              <StampedEvidenceImage
+                uri={urlImagen}
+                meta={{
+                  timestamp,
+                  lat: latitud,
+                  lng: longitud,
+                  custodioNombre: 'Custodio',
+                  servicioNombre: 'Servicio',
+                  empresa: '',
+                  unidad: '',
+                  ruta: observaciones ?? '',
+                  numeroReporte: index,
+                }}
+                height={compact ? 180 : 220}
+              />
+            </View>
+          )
         ) : (
           <View className="mt-3 items-center rounded-xl border border-dashed border-servi-borde py-6">
             <Text className="text-sm text-servi-suave">Sin foto en este reporte</Text>
@@ -69,7 +92,7 @@ export function EvidenciaReportCard({
         )}
 
         {observaciones ? (
-          <Text className="mt-2 text-sm text-servi-suave">{observaciones}</Text>
+          <Text className="mt-2 text-xs text-servi-suave">{observaciones}</Text>
         ) : null}
       </View>
     </View>

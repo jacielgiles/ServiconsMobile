@@ -230,9 +230,13 @@ CREATE TABLE public.evidencias (
   bitacora_id     UUID NOT NULL REFERENCES public.bitacoras(id) ON DELETE CASCADE,
   custodio_id     UUID NOT NULL REFERENCES auth.users(id),
   url_imagen      TEXT,
+  storage_path    TEXT,
   latitud         DOUBLE PRECISION NOT NULL,
   longitud        DOUBLE PRECISION NOT NULL,
+  precision_m     DOUBLE PRECISION,
+  altitud         DOUBLE PRECISION,
   observaciones   TEXT,
+  metadata        JSONB,
   timestamp       TIMESTAMPTZ DEFAULT NOW()
 );
 

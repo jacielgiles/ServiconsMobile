@@ -10,7 +10,7 @@ import { ReportMapView } from '../../../components/ReportMapView';
 import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useLocation } from '../../../hooks/useLocation';
-import { startRoute } from '../../../services/n8nService';
+import { upsertLiveLocation } from '../../../services/locationService';
 
 const ESTADO_LABEL: Record<string, string> = {
   pendiente: 'Listo para iniciar',
@@ -48,19 +48,10 @@ export default function CustodyDetailsScreen() {
   const iniciar = async () => {
     if (!id || !session?.user?.id || !bitacora) return;
 
-    const remoteJid = bitacora.formulario?.whatsappGrupo?.remoteJid;
-    if (!remoteJid) {
-      Alert.alert(
-        'Falta grupo WhatsApp',
-        'Esta bitacora no tiene grupo de WhatsApp. Crea una nueva bitacora y selecciona el grupo en el paso 1.',
-      );
-      return;
-    }
-
     setStarting(true);
 
     try {
-      const { latitude, longitude } = await getCurrentLocation();
+      const { latitude, longitude, accuracy } = await getCurrentLocation();
       setStartCoords({ lat: latitude, lng: longitude });
 
       const ok = await iniciarCustodia(id, session.user.id);
@@ -69,27 +60,15 @@ export default function CustodyDetailsScreen() {
         return;
       }
 
-      const n8nResult = await startRoute({
-        bitacora_id: id,
-        custodio_id: session.user.id,
-        empresa: bitacora.empresa_contratante ?? bitacora.formulario?.empresaContratante ?? '',
-        remoteJid,
-        timestamp_inicio: new Date().toISOString(),
-        ubicacion_inicio: { lat: latitude, lng: longitude },
+      await upsertLiveLocation({
+        custodioId: session.user.id,
+        bitacoraId: id,
+        latitud: latitude,
+        longitud: longitude,
+        precision_m: accuracy ?? null,
       });
 
-      if (n8nResult.success) {
-        Alert.alert(
-          'Servicio iniciado',
-          `Ruta activa. WhatsApp: ${bitacora.formulario?.whatsappGrupo?.pushName ?? 'grupo cliente'}`,
-        );
-      } else {
-        Alert.alert(
-          'Servicio iniciado (sin WhatsApp)',
-          `La ruta quedo activa en Supabase, pero n8n respondio: ${n8nResult.error ?? 'error desconocido'}. Revisa la consola [n8n/start-route].`,
-        );
-      }
-
+      Alert.alert('Servicio iniciado', 'Custodia activa. GPS guardado en Supabase.');
       router.replace({ pathname: '/(app)/custody/active', params: { id } });
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo iniciar el servicio.');
@@ -106,8 +85,6 @@ export default function CustodyDetailsScreen() {
       </View>
     );
   }
-
-  const whatsapp = bitacora?.formulario?.whatsappGrupo;
 
   return (
     <SafeAreaView className="flex-1 bg-servi-fondo">
@@ -137,22 +114,6 @@ export default function CustodyDetailsScreen() {
           </View>
         </View>
 
-        {whatsapp ? (
-          <View className="mb-4 flex-row items-center rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
-            <Ionicons name="logo-whatsapp" size={28} color="#16A34A" />
-            <View className="ml-3 flex-1">
-              <Text className="text-xs uppercase text-emerald-700">Notificaciones WhatsApp</Text>
-              <Text className="font-semibold text-servi-texto">{whatsapp.pushName}</Text>
-            </View>
-          </View>
-        ) : (
-          <View className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-            <Text className="text-sm text-amber-800">
-              Sin grupo WhatsApp en esta bitacora. n8n no podra notificar al cliente.
-            </Text>
-          </View>
-        )}
-
         <PermissionsPanel compact />
 
         {startCoords ? (
@@ -180,7 +141,7 @@ export default function CustodyDetailsScreen() {
               <>
                 <Ionicons name="play-circle" size={28} color="#FFF" />
                 <Text className="mt-1 text-xl font-bold text-white">Iniciar servicio</Text>
-                <Text className="text-xs text-emerald-100">Activa ruta + aviso WhatsApp</Text>
+                <Text className="text-xs text-emerald-100">Activa custodia y guarda GPS en Supabase</Text>
               </>
             )}
           </Pressable>

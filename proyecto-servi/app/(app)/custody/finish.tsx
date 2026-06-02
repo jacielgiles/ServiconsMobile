@@ -4,7 +4,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -18,13 +17,14 @@ import { GoogleMapsActions } from '../../../components/GoogleMapsActions';
 import { ReportMapView } from '../../../components/ReportMapView';
 import { SignaturePad } from '../../../components/SignaturePad';
 import { StepProgressBar } from '../../../components/StepProgressBar';
+import { useAppToast } from '../../../hooks/useAppToast';
 import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useEvidencias } from '../../../hooks/useEvidencias';
 import { useLocation } from '../../../hooks/useLocation';
 import { buildFirmaObject } from '../../../lib/signatures';
+import { buildEvidenceObservaciones, type EvidenceStampMeta } from '../../../lib/evidenceMeta';
 import { clearLiveLocation } from '../../../services/locationService';
-import { finishRoute, signatureToBase64 } from '../../../services/n8nService';
 
 type CloseType = 'acompanamiento' | 'ruta';
 type Phase = 'tipo' | 'foto' | 'firmas' | 'observaciones';
@@ -33,6 +33,7 @@ export default function CustodyFinishScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { session, profile } = useAuth();
+  const toast = useAppToast();
   const { getBitacoraDetalle, cerrarCustodia } = useBitacora();
   const { getCurrentLocation } = useLocation();
   const { uploadFoto, uploadFirma, saveEvidencia } = useEvidencias();
@@ -46,6 +47,7 @@ export default function CustodyFinishScreen() {
   const [closeCoords, setCloseCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [observaciones, setObservaciones] = useState('');
   const [loading, setLoading] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   useEffect(() => {
     if (id) getBitacoraDetalle(id).then(setBitacora);
@@ -68,7 +70,7 @@ export default function CustodyFinishScreen() {
   const tomarFotoFinal = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permiso requerido', 'Necesitamos la camara para la foto de cierre.');
+      toast.warning('Permiso requerido', 'Necesitamos la camara para la foto de cierre.');
       return;
     }
 
@@ -86,7 +88,7 @@ export default function CustodyFinishScreen() {
 
   const avanzarDesdeFoto = () => {
     if (!fotoFinalUri) {
-      Alert.alert('Foto requerida', 'Toma la foto final con GPS.');
+      toast.warning('Foto requerida', 'Toma la foto final con GPS.');
       return;
     }
     setPhase(closeType === 'ruta' ? 'firmas' : 'observaciones');
@@ -94,7 +96,7 @@ export default function CustodyFinishScreen() {
 
   const avanzarDesdeFirmas = () => {
     if (!firmaOperador || !firmaCustodio) {
-      Alert.alert('Firmas requeridas', 'Captura operador y custodio.');
+      toast.warning('Firmas requeridas', 'Captura operador y custodio antes de continuar.');
       return;
     }
     setPhase('observaciones');
@@ -104,7 +106,7 @@ export default function CustodyFinishScreen() {
     if (!id || !session?.user?.id || !closeType) return;
 
     if (closeType === 'ruta' && (!firmaOperador || !firmaCustodio)) {
-      Alert.alert('Firmas requeridas', 'El cierre de ruta requiere firmas.');
+      toast.warning('Firmas requeridas', 'El cierre de ruta requiere ambas firmas.');
       return;
     }
 
@@ -115,20 +117,34 @@ export default function CustodyFinishScreen() {
         ? { latitude: closeCoords.lat, longitude: closeCoords.lng }
         : await getCurrentLocation();
 
-      const urlImagen = await uploadFoto(fotoFinalUri!, session.user.id, id);
-      if (!urlImagen) throw new Error('No se pudo subir la foto final.');
+      const uploaded = await uploadFoto(fotoFinalUri!, session.user.id, id);
+      if (!uploaded) throw new Error('No se pudo subir la foto final.');
 
       const obsText =
         observaciones.trim() ||
         (closeType === 'acompanamiento' ? 'Cierre por acompanamiento' : 'Cierre de ruta');
 
+      const stampMeta: EvidenceStampMeta = {
+        timestamp: new Date().toISOString(),
+        lat: latitude,
+        lng: longitude,
+        custodioNombre: profile?.nombre ?? 'Custodio',
+        servicioNombre: bitacora?.nombre ?? 'Cierre',
+        empresa: bitacora?.empresa_contratante ?? '',
+        unidad: bitacora?.unidad ?? '',
+        ruta: bitacora?.ruta ?? '',
+        numeroReporte: 0,
+      };
+
       const fotoGuardada = await saveEvidencia({
         bitacora_id: id,
         custodio_id: session.user.id,
-        url_imagen: urlImagen,
+        url_imagen: uploaded.url,
+        storage_path: uploaded.path,
         latitud: latitude,
         longitud: longitude,
-        observaciones: obsText,
+        observaciones: `${obsText} | ${buildEvidenceObservaciones(stampMeta)}`,
+        metadata: stampMeta,
       });
 
       if (!fotoGuardada) throw new Error('No se registro la evidencia de cierre.');
@@ -163,27 +179,10 @@ export default function CustodyFinishScreen() {
 
       await clearLiveLocation(session.user.id);
 
-      const remoteJid = bitacora?.formulario?.whatsappGrupo?.remoteJid;
-      if (remoteJid) {
-        await finishRoute({
-          bitacora_id: id,
-          custodio_id: session.user.id,
-          firma_custodio: signatureToBase64(firmaCustodio || ''),
-          firma_receptor: signatureToBase64(firmaOperador || ''),
-          timestamp_fin: new Date().toISOString(),
-          remoteJid,
-        });
-      }
-
-      Alert.alert('Servicio completado', 'Monitoreo cerrado. Reporte final guardado.', [
-        {
-          text: 'OK',
-          onPress: () =>
-            router.replace({ pathname: '/(app)/home', params: { filtro: 'completado' } }),
-        },
-      ]);
+      toast.success('Servicio completado', 'Monitoreo cerrado y guardado.');
+      router.replace({ pathname: '/(app)/home', params: { filtro: 'completado' } });
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo cerrar.');
+      toast.error('Error al cerrar', e instanceof Error ? e.message : 'No se pudo cerrar.');
     } finally {
       setLoading(false);
     }
@@ -196,7 +195,12 @@ export default function CustodyFinishScreen() {
         <Text className="text-lg font-bold text-white">{bitacora?.nombre ?? 'Servicio'}</Text>
       </View>
 
-      <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView
+        className="flex-1 px-4"
+        scrollEnabled={scrollEnabled}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
         <Pressable className="py-3" onPress={() => router.back()}>
           <Text className="text-emerald-400">← Volver al servicio</Text>
         </Pressable>
@@ -282,11 +286,13 @@ export default function CustodyFinishScreen() {
             <SignaturePad
               label={`Firma operador (${bitacora?.formulario?.operador1?.nombre ?? '—'})`}
               value={firmaOperador}
+              onDrawingChange={(drawing) => setScrollEnabled(!drawing)}
               onCapture={setFirmaOperador}
             />
             <SignaturePad
               label={`Firma custodio (${profile?.nombre ?? '—'})`}
               value={firmaCustodio}
+              onDrawingChange={(drawing) => setScrollEnabled(!drawing)}
               onCapture={setFirmaCustodio}
             />
             <Pressable

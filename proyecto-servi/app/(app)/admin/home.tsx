@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text } from 'react-native';
 
@@ -10,6 +10,7 @@ import { FlowHintCard } from '../../../components/FlowHintCard';
 import { MonitoringKpiStrip } from '../../../components/MonitoringKpiStrip';
 import { ReportMapView } from '../../../components/ReportMapView';
 import { useAuth } from '../../../hooks/useAuth';
+import { useAutoRefresh } from '../../../hooks/useAutoRefresh';
 import {
   getAdminDashboardStats,
   listAdminActiveServices,
@@ -37,11 +38,7 @@ export default function AdminHomeScreen() {
     setLoading(false);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadStats();
-    }, [loadStats]),
-  );
+  useAutoRefresh(loadStats, 20_000);
 
   const withGps = activos.filter((a) => a.last_lat != null && a.last_lng != null);
 
@@ -60,7 +57,7 @@ export default function AdminHomeScreen() {
             <MonitoringKpiStrip
               items={[
                 {
-                  label: 'En vivo',
+                  label: 'Activas',
                   value: stats.bitacoras.activas,
                   icon: 'radio',
                   tone: stats.bitacoras.activas > 0 ? 'live' : 'neutral',
@@ -127,10 +124,13 @@ export default function AdminHomeScreen() {
               },
               {
                 icon: 'radio-outline' as const,
-                title: 'En vivo',
+                title: 'Monitoreo activo',
                 metric: String(stats.bitacoras.activas),
-                metricLabel: 'servicios activos ahora',
-                lines: ['Mapa con ubicacion GPS en tiempo real', 'Se actualiza cada ~30 segundos'],
+                metricLabel: 'custodias en curso',
+                lines: [
+                  `${activos.filter((a) => a.gps_freshness === 'live').length} con app conectada ahora`,
+                  'GPS en vivo solo mientras el custodio tiene la app abierta',
+                ],
                 route: '/(app)/admin/activos' as const,
                 accent: stats.bitacoras.activas > 0 ? ('warning' as const) : ('default' as const),
               },

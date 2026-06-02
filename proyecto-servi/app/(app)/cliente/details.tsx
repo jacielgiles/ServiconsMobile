@@ -11,6 +11,7 @@ import { MonitoringKpiStrip } from '../../../components/MonitoringKpiStrip';
 import { ReportMapView } from '../../../components/ReportMapView';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import type { EstadoSegment } from '../../../lib/bitacoraStats';
+import { isGpsTransmissionLive } from '../../../lib/liveGpsStatus';
 import { getLiveLocationByBitacora, type LiveLocationRow } from '../../../services/locationService';
 
 /** Pantalla III — Detalle de servicio (cliente, solo lectura) */
@@ -61,7 +62,9 @@ export default function ClienteDetailsScreen() {
   }
 
   const form = bitacora?.formulario;
-  const isLive = bitacora?.estado === 'activo';
+  const isActiveMonitoring = bitacora?.estado === 'activo';
+  const gpsTransmitting =
+    liveLocation != null && isGpsTransmissionLive(liveLocation.updated_at);
   const routePoints = evidencias.map((ev, i) => ({
     id: ev.id,
     lat: ev.latitud,
@@ -70,7 +73,7 @@ export default function ClienteDetailsScreen() {
   }));
 
   const mapPoints =
-    liveLocation && isLive
+    liveLocation && gpsTransmitting
       ? [
           ...routePoints,
           {
@@ -105,22 +108,27 @@ export default function ClienteDetailsScreen() {
           <Text className="mt-1 text-sm text-servi-suave">{bitacora?.ruta}</Text>
         </View>
 
-        {isLive ? (
+        {isActiveMonitoring ? (
           <LivePulseBanner
             count={1}
             label={
-              liveLocation
-                ? `GPS en vivo · actualizado ${new Date(liveLocation.updated_at).toLocaleTimeString()}`
-                : 'Monitoreo en curso — esperando ubicacion en vivo del custodio'
+              gpsTransmitting
+                ? `App conectada · GPS ${new Date(liveLocation!.updated_at).toLocaleTimeString()}`
+                : 'Custodia activa — el custodio no tiene la app abierta ahora'
             }
-            tone="sky"
+            tone={gpsTransmitting ? 'sky' : 'orange'}
           />
         ) : null}
 
         <MonitoringKpiStrip
           items={[
             { label: 'Reportes GPS', value: evidencias.length, icon: 'camera-outline', tone: 'info' },
-            { label: 'Estado', value: bitacora?.estado ?? '—', icon: 'flag-outline', tone: isLive ? 'live' : 'neutral' },
+            {
+              label: 'Estado',
+              value: gpsTransmitting ? 'App conectada' : bitacora?.estado ?? '—',
+              icon: 'flag-outline',
+              tone: gpsTransmitting ? 'live' : isActiveMonitoring ? 'warn' : 'neutral',
+            },
             { label: 'Unidad', value: bitacora?.unidad ?? '—', icon: 'bus-outline', tone: 'neutral' },
             { label: 'Empresa', value: bitacora?.empresa_contratante?.slice(0, 12) ?? '—', icon: 'business-outline', tone: 'neutral' },
           ]}
@@ -146,41 +154,43 @@ export default function ClienteDetailsScreen() {
             <ReportMapView
               points={mapPoints}
               height={200}
-              title={liveLocation && isLive ? 'Recorrido + ubicacion en vivo' : 'Evidencias en mapa'}
+              title={gpsTransmitting ? 'Recorrido + app conectada' : 'Evidencias en mapa'}
               showOpenMaps={false}
             />
             <View className="mt-3">
               <GoogleMapsActions
                 lat={
-                  liveLocation && isLive
+                  liveLocation && gpsTransmitting
                     ? liveLocation.latitud
                     : routePoints[routePoints.length - 1].lat
                 }
                 lng={
-                  liveLocation && isLive
+                  liveLocation && gpsTransmitting
                     ? liveLocation.longitud
                     : routePoints[routePoints.length - 1].lng
                 }
                 label={bitacora?.nombre ?? 'Servicio'}
                 routePoints={routePoints}
                 coordsLabel={
-                  liveLocation && isLive ? 'Ubicacion en vivo del custodio' : 'Ultimo punto del recorrido'
+                  gpsTransmitting
+                    ? 'Ubicacion en tiempo real (app abierta)'
+                    : 'Ultimo punto del recorrido'
                 }
                 variant="full"
                 showRoute
               />
             </View>
           </View>
-        ) : liveLocation && isLive ? (
+        ) : liveLocation && gpsTransmitting ? (
           <View className="mb-4">
-            <Text className="mb-2 font-semibold text-servi-texto">Ubicacion en vivo</Text>
+            <Text className="mb-2 font-semibold text-servi-texto">App conectada</Text>
             <ReportMapView
               points={[
                 {
                   id: 'live',
                   lat: liveLocation.latitud,
                   lng: liveLocation.longitud,
-                  label: 'Custodio en vivo',
+                  label: 'Custodio conectado',
                 },
               ]}
               height={200}

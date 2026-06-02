@@ -91,7 +91,7 @@ export function ServiceCard({ bitacora, onPress, index = 0 }: Props) {
             {isActive ? (
               <View className="mt-2 flex-row items-center">
                 <View className="mr-1.5 h-2 w-2 rounded-full bg-emerald-400" />
-                <Text className="text-xs font-semibold text-emerald-400">Monitoreo activo · GPS en vivo</Text>
+                <Text className="text-xs font-semibold text-emerald-400">Monitoreo activo</Text>
               </View>
             ) : isPending ? (
               <Text className="mt-2 text-xs text-amber-300/90">

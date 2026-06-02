@@ -103,6 +103,10 @@ export function canCreateBitacora(role: UserRole | null | undefined): boolean {
   return role === 'custodio';
 }
 
+export function canManageTrash(role: UserRole | null | undefined): boolean {
+  return role === 'super_usuario';
+}
+
 export function getDashboardTitleForRole(role: UserRole | null | undefined): string {
   switch (role) {
     case 'super_usuario':

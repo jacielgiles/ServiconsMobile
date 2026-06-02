@@ -1,4 +1,4 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,6 +23,7 @@ import { ServiceCard } from '../../components/ServiceCard';
 import { countBitacorasByEstado, getBitacoraTotals } from '../../lib/bitacoraStats';
 import { getDashboardTitleForRole } from '../../lib/roles';
 import { useAuth } from '../../hooks/useAuth';
+import { useAutoRefresh } from '../../hooks/useAutoRefresh';
 import { useBitacora, type BitacoraDetalle } from '../../hooks/useBitacora';
 import { createEmptyFormulario, useBitacoraStore } from '../../store/useBitacoraStore';
 import type { BitacoraResumen } from '../../types/models';
@@ -52,11 +53,7 @@ export default function HomeScreen() {
     setBitacoras(data);
   }, [getBitacoras]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadBitacoras();
-    }, [loadBitacoras]),
-  );
+  useAutoRefresh(loadBitacoras, 20_000);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -129,7 +126,7 @@ export default function HomeScreen() {
           <MonitoringKpiStrip
             items={[
               { label: 'Pendientes', value: totals.pendiente, icon: 'time-outline', tone: 'info' },
-              { label: 'En vivo', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
+              { label: 'Activas', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
               { label: 'Completados', value: totals.completado, icon: 'checkmark-done', tone: 'neutral' },
               { label: 'Total', value: totals.total, icon: 'layers-outline', tone: 'neutral' },
             ]}
@@ -170,7 +167,7 @@ export default function HomeScreen() {
                 filtro === 'pendiente'
                   ? 'Toca el boton + abajo para crear una bitacora. Tu la inicias cuando estes listo en campo.'
                   : filtro === 'activo'
-                    ? 'Cuando confirmes e inicies una custodia pendiente, aparecera aqui con GPS en vivo.'
+                    ? 'Cuando inicies una custodia y mantengas la app abierta, transmitiras GPS al admin.'
                     : 'Los servicios cerrados con foto y firmas apareceran en esta lista.'
               }
               tone="emerald"

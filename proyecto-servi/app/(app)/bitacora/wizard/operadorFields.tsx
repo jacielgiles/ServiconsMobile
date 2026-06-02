@@ -6,10 +6,12 @@ export function OperadorFields({
   operador,
   onChange,
   firmaLabel,
+  onDrawingChange,
 }: {
   operador: OperadorCustodiado;
   onChange: (op: OperadorCustodiado) => void;
   firmaLabel: string;
+  onDrawingChange?: (drawing: boolean) => void;
 }) {
   const v = operador.vehiculo;
 
@@ -85,6 +87,7 @@ export function OperadorFields({
       <SignaturePad
         label={firmaLabel}
         value={operador.firma}
+        onDrawingChange={onDrawingChange}
         onCapture={(firma) => onChange({ ...operador, firma })}
       />
     </>

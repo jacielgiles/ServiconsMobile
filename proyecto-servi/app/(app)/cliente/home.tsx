@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native';
 
@@ -14,6 +14,7 @@ import { SegmentedTabs } from '../../../components/SegmentedTabs';
 import { ServiceCard } from '../../../components/ServiceCard';
 import { countBitacorasByEstado, getBitacoraTotals } from '../../../lib/bitacoraStats';
 import { useAuth } from '../../../hooks/useAuth';
+import { useAutoRefresh } from '../../../hooks/useAutoRefresh';
 import { useBitacora } from '../../../hooks/useBitacora';
 import type { BitacoraResumen } from '../../../types/models';
 
@@ -33,11 +34,7 @@ export default function ClienteHomeScreen() {
     setBitacoras(data);
   }, [getClienteBitacoras]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+  useAutoRefresh(load, 20_000);
 
   const totals = useMemo(() => getBitacoraTotals(bitacoras), [bitacoras]);
   const chartSegments = useMemo(() => countBitacorasByEstado(bitacoras), [bitacoras]);
@@ -48,7 +45,7 @@ export default function ClienteHomeScreen() {
   const tabs = useMemo(
     () => [
       { key: 'pendiente' as const, label: 'Programados', count: totals.pendiente },
-      { key: 'activo' as const, label: 'En vivo', count: totals.activo },
+      { key: 'activo' as const, label: 'Activas', count: totals.activo },
       { key: 'completado' as const, label: 'Historial', count: totals.completado },
     ],
     [totals],
@@ -81,14 +78,14 @@ export default function ClienteHomeScreen() {
 
         <LivePulseBanner
           count={totals.activo}
-          label="custodias activas ahora — ubicacion en vivo en mapa"
+          label="custodias activas — GPS solo con app abierta del custodio"
           tone="sky"
         />
 
         <MonitoringKpiStrip
           items={[
             { label: 'Programados', value: totals.pendiente, icon: 'calendar-outline', tone: 'info' },
-            { label: 'En vivo', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
+            { label: 'Activas', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
             { label: 'Completados', value: totals.completado, icon: 'archive-outline', tone: 'neutral' },
             { label: 'Total', value: totals.total, icon: 'layers-outline', tone: 'neutral' },
           ]}

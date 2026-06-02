@@ -1,3 +1,4 @@
+import { getGpsFreshness, type GpsFreshness } from '../lib/liveGpsStatus';
 import { supabase } from '../lib/supabaseClient';
 import type { UserRole } from '../types/models';
 
@@ -169,6 +170,7 @@ export type AdminActiveServiceRow = AdminBitacoraRow & {
   last_lng: number | null;
   last_report_at: string | null;
   location_source?: 'live' | 'evidencia' | null;
+  gps_freshness: GpsFreshness;
 };
 
 function mergeLocationForService(
@@ -187,35 +189,78 @@ function mergeLocationForService(
   last_lng: number | null;
   last_report_at: string | null;
   location_source: 'live' | 'evidencia' | null;
+  gps_freshness: GpsFreshness;
 } {
   const live =
     liveRows.find((r) => r.bitacora_id === bitacoraId) ??
     liveRows.find((r) => r.custodio_id === custodioId && r.bitacora_id === bitacoraId) ??
     liveRows.find((r) => r.custodio_id === custodioId);
 
+  let result: {
+    last_lat: number | null;
+    last_lng: number | null;
+    last_report_at: string | null;
+    location_source: 'live' | 'evidencia' | null;
+  };
+
   if (live) {
-    const liveTime = new Date(live.updated_at).getTime();
-    const evTime = evidenceLast ? new Date(evidenceLast.at).getTime() : 0;
-    if (!evidenceLast || liveTime >= evTime) {
-      return {
+    const liveFreshness = getGpsFreshness(live.updated_at);
+    const liveIsFresh = liveFreshness === 'live';
+
+    if (liveIsFresh) {
+      result = {
         last_lat: live.latitud,
         last_lng: live.longitud,
         last_report_at: live.updated_at,
         location_source: 'live',
       };
+    } else if (evidenceLast) {
+      result = {
+        last_lat: evidenceLast.lat,
+        last_lng: evidenceLast.lng,
+        last_report_at: evidenceLast.at,
+        location_source: 'evidencia',
+      };
+    } else if (liveFreshness === 'stale') {
+      result = {
+        last_lat: live.latitud,
+        last_lng: live.longitud,
+        last_report_at: live.updated_at,
+        location_source: 'evidencia',
+      };
+    } else {
+      return {
+        last_lat: null,
+        last_lng: null,
+        last_report_at: null,
+        location_source: null,
+        gps_freshness: 'offline',
+      };
     }
-  }
-
-  if (evidenceLast) {
-    return {
+  } else if (evidenceLast) {
+    result = {
       last_lat: evidenceLast.lat,
       last_lng: evidenceLast.lng,
       last_report_at: evidenceLast.at,
       location_source: 'evidencia',
     };
+  } else {
+    return {
+      last_lat: null,
+      last_lng: null,
+      last_report_at: null,
+      location_source: null,
+      gps_freshness: 'offline',
+    };
   }
 
-  return { last_lat: null, last_lng: null, last_report_at: null, location_source: null };
+  return {
+    ...result,
+    gps_freshness:
+      result.location_source === 'live'
+        ? 'live'
+        : getGpsFreshness(result.last_report_at),
+  };
 }
 
 function indexEvidencias(
@@ -244,9 +289,12 @@ export type AdminEvidenciaRow = {
   id: string;
   bitacora_id: string;
   url_imagen: string | null;
+  storage_path: string | null;
   latitud: number;
   longitud: number;
+  precision_m: number | null;
   observaciones: string | null;
+  metadata: Record<string, unknown> | null;
   timestamp: string;
 };
 
@@ -357,7 +405,9 @@ export async function listLiveCustodioLocations(): Promise<{
   const names = new Map((profilesRes.data ?? []).map((p) => [p.id, p.nombre]));
   const bitacoraNames = new Map((bitacorasRes.data ?? []).map((b) => [b.id, b.nombre]));
 
-  const data: LiveCustodioMapRow[] = (liveRes.data ?? []).map((row) => ({
+  const data: LiveCustodioMapRow[] = (liveRes.data ?? [])
+    .filter((row) => getGpsFreshness(row.updated_at) === 'live')
+    .map((row) => ({
     custodio_id: row.custodio_id,
     custodio_nombre: names.get(row.custodio_id) ?? null,
     bitacora_id: row.bitacora_id,
@@ -406,7 +456,9 @@ export async function listAdminBitacoraEvidencias(bitacoraId: string): Promise<{
 }> {
   const { data, error } = await supabase
     .from('evidencias')
-    .select('id, bitacora_id, url_imagen, latitud, longitud, observaciones, timestamp')
+    .select(
+      'id, bitacora_id, url_imagen, storage_path, latitud, longitud, precision_m, observaciones, metadata, timestamp',
+    )
     .eq('bitacora_id', bitacoraId)
     .order('timestamp', { ascending: false });
 
@@ -477,6 +529,8 @@ export type AdminBitacoraDetail = AdminBitacoraRow & {
   report_interval_minutes: number | null;
   start_time: string | null;
   updated_at: string | null;
+  firma_operador: string | null;
+  firma_custodio: string | null;
 };
 
 export async function getAdminBitacoraFull(bitacoraId: string): Promise<{
@@ -486,7 +540,7 @@ export async function getAdminBitacoraFull(bitacoraId: string): Promise<{
   const { data, error } = await supabase
     .from('bitacoras')
     .select(
-      'id, nombre, ruta, unidad, empresa_contratante, estado, created_at, completed_at, custodio_id, formulario, report_interval_minutes, start_time, updated_at',
+      'id, nombre, ruta, unidad, empresa_contratante, estado, created_at, completed_at, custodio_id, formulario, report_interval_minutes, start_time, updated_at, firma_operador, firma_custodio',
     )
     .eq('id', bitacoraId)
     .maybeSingle();
@@ -508,6 +562,8 @@ export async function getAdminBitacoraFull(bitacoraId: string): Promise<{
       report_interval_minutes: data.report_interval_minutes ?? null,
       start_time: data.start_time ?? null,
       updated_at: data.updated_at ?? null,
+      firma_operador: data.firma_operador ?? null,
+      firma_custodio: data.firma_custodio ?? null,
     },
     error: null,
   };
@@ -552,6 +608,20 @@ export async function listAdminBitacoras(): Promise<{
 
   if (error) return { data: [], error: error.message };
   return { data: (data ?? []) as AdminBitacoraRow[], error: null };
+}
+
+export async function listSosForBitacora(bitacoraId: string): Promise<{
+  data: AdminSosRow[];
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('sos_alerts')
+    .select('id, bitacora_id, custodio_id, latitud, longitud, estado, created_at')
+    .eq('bitacora_id', bitacoraId)
+    .order('created_at', { ascending: false });
+
+  if (error) return { data: [], error: error.message };
+  return { data: (data ?? []) as AdminSosRow[], error: null };
 }
 
 export async function listAdminSosAlerts(): Promise<{

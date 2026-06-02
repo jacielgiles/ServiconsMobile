@@ -24,6 +24,8 @@ export function useLocation() {
     return {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy ?? null,
+      altitude: position.coords.altitude ?? null,
     };
   }, []);
 

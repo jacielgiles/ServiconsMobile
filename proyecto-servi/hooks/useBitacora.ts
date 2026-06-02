@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { supabase } from '../lib/supabaseClient';
+import { formatUbicacionShort } from '../lib/ubicacionAddress';
 import type { BitacoraFormulario, BitacoraResumen } from '../types/models';
 
 export type BitacoraDetalle = BitacoraResumen & {
@@ -94,7 +95,9 @@ export function useBitacora() {
   const getBitacoraEvidencias = useCallback(async (bitacoraId: string) => {
     const { data, error: fetchError } = await supabase
       .from('evidencias')
-      .select('id, bitacora_id, url_imagen, latitud, longitud, observaciones, timestamp')
+      .select(
+        'id, bitacora_id, url_imagen, storage_path, latitud, longitud, precision_m, observaciones, metadata, timestamp',
+      )
       .eq('bitacora_id', bitacoraId)
       .order('timestamp', { ascending: false });
 
@@ -148,7 +151,7 @@ export function useBitacora() {
         return false;
       }
 
-      const ruta = `${formulario.origen.municipio} → ${formulario.destino.municipio}`;
+      const ruta = `${formatUbicacionShort(formulario.origen)} → ${formatUbicacionShort(formulario.destino)}`;
       const unidad = formulario.operador1?.vehiculo?.placas || formulario.vehiculoCustodia?.placas || '';
 
       const { error: insertError } = await supabase.from('bitacoras').insert({

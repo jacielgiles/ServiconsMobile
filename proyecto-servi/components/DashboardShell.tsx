@@ -6,7 +6,7 @@ import { Alert, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../hooks/useAuth';
-import { getDashboardTitleForRole, getRoleLabel } from '../lib/roles';
+import { canManageTrash, getDashboardTitleForRole, getRoleLabel } from '../lib/roles';
 import type { UserRole } from '../types/models';
 import { ProfileModal } from './ProfileModal';
 import { UserAvatar } from './UserAvatar';
@@ -127,6 +127,21 @@ export function DashboardHeader({ title, role: roleProp }: Props) {
                 label="Bitacoras"
                 onPress={() => navigate('/(app)/admin/bitacoras')}
               />
+            ) : null}
+            {canManageTrash(role) ? (
+              <>
+                <View className="h-px bg-servi-borde/50" />
+                <MenuItem
+                  icon="trash-outline"
+                  label="Limpieza de datos"
+                  onPress={() => navigate('/(app)/admin/limpieza')}
+                />
+                <MenuItem
+                  icon="archive-outline"
+                  label="Papelera"
+                  onPress={() => navigate('/(app)/admin/papelera')}
+                />
+              </>
             ) : null}
             <MenuItem
               icon="shield-outline"

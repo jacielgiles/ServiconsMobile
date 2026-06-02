@@ -1,7 +1,15 @@
 export interface Ubicacion {
   estado: string;
   municipio: string;
+  ciudad?: string;
+  colonia?: string;
+  calle?: string;
+  numeroExterior?: string;
+  codigoPostal?: string;
+  referencia?: string;
   personalAsignado: string;
+  lat?: string;
+  lng?: string;
 }
 
 export interface VehiculoCustodia {
@@ -51,7 +59,7 @@ export interface OperadorCustodiado {
 
 export interface Firma {
   format: 'data-url';
-  mime: 'image/png' | 'image/jpeg';
+  mime: 'image/png' | 'image/jpeg' | 'image/svg+xml';
   encoding: 'base64';
   capturedAt: string;
   signerRole: 'custodio' | 'operador' | 'responsable_origen' | 'responsable_destino';

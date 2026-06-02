@@ -1,7 +1,6 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConfirmFinishModal } from '../../../components/ConfirmFinishModal';
@@ -9,19 +8,23 @@ import { CircularTimer } from '../../../components/CircularTimer';
 import { LocationDisplay } from '../../../components/LocationDisplay';
 import { ReportStatusBar, type ReportSyncStatus } from '../../../components/ReportStatusBar';
 import { SOSButton } from '../../../components/SOSButton';
+import { useAppToast } from '../../../hooks/useAppToast';
+import { useAutoRefresh } from '../../../hooks/useAutoRefresh';
 import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useEvidencias } from '../../../hooks/useEvidencias';
 import { useLiveLocationTracker } from '../../../hooks/useLiveLocationTracker';
 import { useLocation } from '../../../hooks/useLocation';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { buildEvidenceObservaciones, type EvidenceStampMeta } from '../../../lib/evidenceMeta';
 import { supabase } from '../../../lib/supabaseClient';
-import { reportEvidence, triggerSOS, type N8nChannel } from '../../../services/n8nService';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function CustodyActiveScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { session, profile } = useAuth();
+  const toast = useAppToast();
   const userId = session?.user?.id;
   const { getBitacoraDetalle } = useBitacora();
   const { getCurrentLocation } = useLocation();
@@ -35,22 +38,19 @@ export default function CustodyActiveScreen() {
   const [syncStatus, setSyncStatus] = useState<ReportSyncStatus>('ok');
   const [finishModal, setFinishModal] = useState(false);
 
-  const { lastUploadAt, uploadError } = useLiveLocationTracker({
+  const { lastUploadAt, uploadError, appForeground, isTransmittingLive } = useLiveLocationTracker({
     custodioId: userId,
     bitacoraId: id,
     enabled: Boolean(id && userId && bitacora?.estado === 'activo'),
   });
 
-  useEffect(() => {
+  const reload = useCallback(async () => {
     if (!id) return;
     getBitacoraDetalle(id).then(setBitacora);
     getEvidencias(id).then((rows) => setEvidenciasCount(rows.length));
   }, [id, getBitacoraDetalle, getEvidencias]);
 
-  const getContactos = (): N8nChannel[] => {
-    const grupo = bitacora?.formulario?.whatsappGrupo;
-    return grupo ? [grupo] : [];
-  };
+  useAutoRefresh(reload, 15_000);
 
   const reportarEvidencia = useCallback(async () => {
     if (!id || !userId || reporting) return;
@@ -62,7 +62,7 @@ export default function CustodyActiveScreen() {
 
     try {
       const photo = await ImagePicker.launchCameraAsync({
-        quality: 0.7,
+        quality: 0.8,
         base64: false,
       });
 
@@ -72,50 +72,51 @@ export default function CustodyActiveScreen() {
       }
 
       const photoUri = photo.assets[0].uri;
-      const { latitude, longitude } = await getCurrentLocation();
-      const urlImagen = await uploadFoto(photoUri, userId, id);
+      const loc = await getCurrentLocation();
+      const nextReportNumber = evidenciasCount + 1;
 
-      if (!urlImagen) {
-        throw new Error('No se pudo subir la foto a Storage');
-      }
+      const stampMeta: EvidenceStampMeta = {
+        timestamp: new Date().toISOString(),
+        lat: loc.latitude,
+        lng: loc.longitude,
+        precision_m: loc.accuracy ?? null,
+        custodioNombre: profile?.nombre ?? 'Custodio',
+        servicioNombre: bitacora?.nombre ?? 'Servicio',
+        empresa: bitacora?.empresa_contratante ?? profile?.empresa ?? '',
+        unidad: bitacora?.unidad ?? '',
+        ruta: bitacora?.ruta ?? '',
+        numeroReporte: nextReportNumber,
+      };
+
+      const uploaded = await uploadFoto(photoUri, userId, id);
+      if (!uploaded) throw new Error('No se pudo subir la foto a Storage');
 
       const saved = await saveEvidencia({
         bitacora_id: id,
         custodio_id: userId,
-        url_imagen: urlImagen,
-        latitud: latitude,
-        longitud: longitude,
+        url_imagen: uploaded.url,
+        storage_path: uploaded.path,
+        latitud: loc.latitude,
+        longitud: loc.longitude,
+        precision_m: loc.accuracy ?? null,
+        observaciones: buildEvidenceObservaciones(stampMeta),
+        metadata: stampMeta,
       });
 
-      if (!saved) throw new Error('No se guardo la evidencia');
-
-      const n8nResult = await reportEvidence(
-        {
-          bitacora_id: id,
-          custodio_id: userId,
-          latitud: latitude,
-          longitud: longitude,
-          custodio: profile?.nombre ?? 'Custodio',
-          estatus: 'en_ruta',
-          contactos: getContactos(),
-        },
-        photoUri,
-      );
+      if (!saved) throw new Error('No se guardo la evidencia en la base de datos');
 
       setTimerKey((k) => k + 1);
       setLocationKey((k) => k + 1);
       getEvidencias(id).then((rows) => setEvidenciasCount(rows.length));
+      setSyncStatus('ok');
 
-      Alert.alert(
-        n8nResult.success ? 'Reporte enviado' : 'Reporte guardado',
-        n8nResult.success
-          ? 'Foto + GPS en mapa y Supabase. WhatsApp via n8n.'
-          : `Guardado en Supabase. n8n: ${n8nResult.error ?? 'sin respuesta'}.`,
+      toast.success(
+        'Reporte guardado',
+        'Foto y GPS registrados. Admin y cliente ven la ultima ubicacion.',
       );
-      setSyncStatus(n8nResult.success ? 'ok' : 'error');
     } catch (e) {
       setSyncStatus('error');
-      Alert.alert('Error', e instanceof Error ? e.message : 'Error al reportar');
+      toast.error('Error al reportar', e instanceof Error ? e.message : 'Intenta de nuevo.');
     } finally {
       setReporting(false);
     }
@@ -129,7 +130,10 @@ export default function CustodyActiveScreen() {
     saveEvidencia,
     getEvidencias,
     profile?.nombre,
-    bitacora?.formulario?.whatsappGrupo,
+    profile?.empresa,
+    bitacora,
+    evidenciasCount,
+    toast,
   ]);
 
   const activarSOS = async () => {
@@ -139,7 +143,7 @@ export default function CustodyActiveScreen() {
     if (!permitted) return;
 
     try {
-      const { latitude, longitude } = await getCurrentLocation();
+      const { latitude, longitude, accuracy } = await getCurrentLocation();
 
       const { error } = await supabase.from('sos_alerts').insert({
         custodio_id: userId,
@@ -151,24 +155,24 @@ export default function CustodyActiveScreen() {
 
       if (error) throw error;
 
-      const n8nResult = await triggerSOS({
-        custodio_id: userId,
-        custodio_nombre: profile?.nombre ?? 'Custodio',
-        bitacora_id: id,
-        latitud: latitude,
-        longitud: longitude,
-        timestamp: new Date().toISOString(),
-        contactos_emergencia: getContactos(),
-      });
+      await supabase.from('custodio_ubicaciones_live').upsert(
+        {
+          custodio_id: userId,
+          bitacora_id: id,
+          latitud: latitude,
+          longitud: longitude,
+          precision_m: accuracy ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'custodio_id' },
+      );
 
-      Alert.alert(
+      toast.warning(
         'SOS enviado',
-        n8nResult.success
-          ? 'Ayuda en camino. Ubicacion GPS compartida con administradores.'
-          : `Alerta registrada. n8n: ${n8nResult.error ?? 'sin respuesta'}.`,
+        'Alerta registrada. Los administradores la ven en Alertas SOS.',
       );
     } catch (e) {
-      Alert.alert('Error SOS', e instanceof Error ? e.message : 'No se pudo enviar SOS');
+      toast.error('Error SOS', e instanceof Error ? e.message : 'No se pudo enviar SOS');
     }
   };
 
@@ -200,17 +204,35 @@ export default function CustodyActiveScreen() {
 
         <LocationDisplay refreshKey={locationKey} label="Mapa GPS en tiempo real" />
 
-        <View className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+        <View
+          className={`mb-4 rounded-2xl border px-4 py-3 ${
+            isTransmittingLive
+              ? 'border-emerald-500/40 bg-emerald-500/10'
+              : 'border-amber-500/40 bg-amber-500/10'
+          }`}
+        >
           <View className="mb-1 flex-row items-center gap-2">
-            <View className="h-2 w-2 rounded-full bg-emerald-400" />
-            <Text className="text-xs font-semibold uppercase text-emerald-300">
-              Ubicacion en vivo activa
+            <View
+              className={`h-2 w-2 rounded-full ${
+                isTransmittingLive ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}
+            />
+            <Text
+              className={`text-xs font-semibold uppercase ${
+                isTransmittingLive ? 'text-emerald-300' : 'text-amber-300'
+              }`}
+            >
+              {isTransmittingLive
+                ? 'GPS transmitiendo — app abierta'
+                : appForeground
+                  ? 'Conectando GPS...'
+                  : 'GPS pausado — abre la app en custodia'}
             </Text>
           </View>
           <Text className="text-sm text-servi-suave">
-            {lastUploadAt
-              ? `Ultima subida a la base: ${new Date(lastUploadAt).toLocaleTimeString()}`
-              : 'Subiendo ubicacion GPS a administradores...'}
+            {isTransmittingLive && lastUploadAt
+              ? `Ultima subida: ${new Date(lastUploadAt).toLocaleTimeString()} · cada ~30 s`
+              : 'Los administradores solo ven "en vivo" mientras esta pantalla esta activa.'}
           </Text>
           {uploadError ? (
             <Text className="mt-1 text-xs text-servi-peligro">Error GPS: {uploadError}</Text>
@@ -230,7 +252,7 @@ export default function CustodyActiveScreen() {
           {reporting ? (
             <ActivityIndicator color="#FFF" />
           ) : (
-            <Text className="text-lg font-bold text-white">Reportar ahora (camara)</Text>
+            <Text className="text-lg font-bold text-white">Reportar ahora (camara + GPS)</Text>
           )}
         </Pressable>
       </ScrollView>
@@ -262,25 +284,15 @@ function StatBox({
   label,
   value,
   accent,
-  highlight,
 }: {
   label: string;
   value: string;
   accent?: boolean;
-  highlight?: boolean;
 }) {
   return (
-    <View
-      className={`flex-1 rounded-2xl border px-3 py-3 ${
-        highlight
-          ? 'border-emerald-500/50 bg-emerald-500/10'
-          : 'border-servi-borde bg-servi-superficie'
-      }`}
-    >
+    <View className="flex-1 rounded-2xl border border-servi-borde bg-servi-superficie px-3 py-3">
       <Text className="text-[10px] uppercase text-servi-suave">{label}</Text>
-      <Text
-        className={`text-lg font-bold ${accent ? 'text-servi-acento' : highlight ? 'text-emerald-400' : 'text-servi-texto'}`}
-      >
+      <Text className={`text-lg font-bold ${accent ? 'text-servi-acento' : 'text-servi-texto'}`}>
         {value}
       </Text>
     </View>

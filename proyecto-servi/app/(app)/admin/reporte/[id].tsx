@@ -1,82 +1,87 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
-import { EvidenciaReportCard } from '../../../../components/EvidenciaReportCard';
+import { EvidenciaCompactCard } from '../../../../components/EvidenciaCompactCard';
 import { GoogleMapsActions } from '../../../../components/GoogleMapsActions';
 import { ReportMapView } from '../../../../components/ReportMapView';
 import { AppButton } from '../../../../components/AppButton';
 import { DashboardShell } from '../../../../components/DashboardShell';
+import { useAutoRefresh } from '../../../../hooks/useAutoRefresh';
+import { useBitacoraPdfExport } from '../../../../hooks/useBitacoraPdfExport';
+import { buildBitacoraRoutePoints } from '../../../../lib/bitacoraRoute';
+import { resolveEvidenceImageUrls } from '../../../../lib/evidenceImage';
 import {
-  getAdminBitacoraDetail,
+  getAdminBitacoraFull,
   listAdminBitacoraEvidencias,
   type AdminEvidenciaRow,
 } from '../../../../services/adminService';
-import { exportPDF } from '../../../../services/n8nService';
+
+type EvidenciaConUrl = AdminEvidenciaRow & { displayUrl: string | null };
 
 export default function AdminReporteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { exportPdf, exporting } = useBitacoraPdfExport();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
   const [bitacora, setBitacora] = useState<Awaited<
-    ReturnType<typeof getAdminBitacoraDetail>
+    ReturnType<typeof getAdminBitacoraFull>
   >['data']>(null);
-  const [evidencias, setEvidencias] = useState<AdminEvidenciaRow[]>([]);
+  const [evidencias, setEvidencias] = useState<EvidenciaConUrl[]>([]);
 
   const load = useCallback(async () => {
     if (!id) return;
 
     setLoading(true);
     const [detailRes, evidenciasRes] = await Promise.all([
-      getAdminBitacoraDetail(id),
+      getAdminBitacoraFull(id),
       listAdminBitacoraEvidencias(id),
     ]);
 
     setBitacora(detailRes.data);
-    setEvidencias(evidenciasRes.data);
+    if (evidenciasRes.data.length > 0) {
+      const withUrls = await resolveEvidenceImageUrls(evidenciasRes.data);
+      setEvidencias(withUrls);
+    } else {
+      setEvidencias([]);
+    }
     setError(detailRes.error ?? evidenciasRes.error);
     setLoading(false);
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useAutoRefresh(load, 20_000);
 
-  const routePoints = useMemo(
-    () =>
-      [...evidencias]
-        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-        .map((ev, index) => ({
-          id: ev.id,
-          lat: ev.latitud,
-          lng: ev.longitud,
-          label: `Reporte ${index + 1}`,
-        })),
+  const sortedEvidencias = useMemo(
+    () => [...evidencias].sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
     [evidencias],
   );
 
-  const handleExportPdf = async () => {
-    if (!id) return;
-    setExporting(true);
-    const result = await exportPDF(id, true);
-    setExporting(false);
-    Alert.alert(
-      result.success ? 'PDF solicitado' : 'Error en PDF',
-      result.success
-        ? 'n8n procesara el PDF. Revisa consola [n8n/export-pdf].'
-        : result.error ?? 'No se pudo solicitar el PDF',
+  const routePoints = useMemo(() => {
+    const evidence = [...evidencias]
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .map((ev, index) => ({
+        id: ev.id,
+        lat: ev.latitud,
+        lng: ev.longitud,
+        label: `Reporte ${index + 1}`,
+      }));
+    return buildBitacoraRoutePoints(
+      (bitacora?.formulario as import('../../../../types/models').BitacoraFormulario | null) ??
+        null,
+      evidence,
     );
-  };
+  }, [evidencias, bitacora?.formulario]);
+
+  const fotosVisibles = sortedEvidencias.filter((e) => e.displayUrl).length;
 
   return (
     <DashboardShell title="Reporte visual">
-      <Pressable className="mb-3 py-1" onPress={() => router.back()}>
+      <Pressable className="mb-2 py-1" onPress={() => router.back()}>
         <Text className="text-servi-acento">Volver</Text>
       </Pressable>
 
-      {loading ? (
+      {loading && !bitacora ? (
         <ActivityIndicator color="#F97316" />
       ) : error ? (
         <Text className="text-servi-peligro">{error}</Text>
@@ -84,85 +89,75 @@ export default function AdminReporteDetailScreen() {
         <Text className="text-servi-suave">Reporte no encontrado.</Text>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-          <View className="mb-4 overflow-hidden rounded-2xl border border-servi-borde bg-servi-superficie">
-            <View className="px-4 py-3">
-              <Text className="text-lg font-semibold text-servi-texto">
+          <View className="mb-3 flex-row items-center justify-between rounded-2xl border border-servi-borde bg-servi-superficie px-4 py-3">
+            <View className="flex-1 pr-3">
+              <Text className="text-base font-semibold text-servi-texto" numberOfLines={1}>
                 {bitacora.nombre ?? 'Sin nombre'}
               </Text>
-              <Text className="mt-1 text-sm text-servi-suave">{bitacora.ruta ?? '—'}</Text>
-              <View className="mt-3 flex-row flex-wrap gap-2">
-                <Badge label={bitacora.estado} />
-                <Badge label={`${evidencias.length} reportes`} accent />
-                {bitacora.custodio_nombre ? <Badge label={bitacora.custodio_nombre} /> : null}
-              </View>
+              <Text className="text-xs text-servi-suave" numberOfLines={1}>
+                {bitacora.ruta ?? '—'} · {bitacora.unidad ?? '—'}
+              </Text>
+            </View>
+            <View className="rounded-full bg-servi-acento px-2.5 py-1">
+              <Text className="text-[10px] font-bold text-servi-fondo">{bitacora.estado}</Text>
             </View>
           </View>
 
+          <AppButton
+            label="Exportar PDF"
+            variant="accent"
+            loading={exporting}
+            onPress={() => void exportPdf(bitacora, evidencias)}
+          />
+          <Text className="mb-3 mt-1 text-center text-[11px] text-servi-suave">
+            {evidencias.length} reportes · {fotosVisibles} fotos visibles · firmas y datos incluidos
+          </Text>
+
           {routePoints.length > 0 ? (
-            <View className="mb-4">
-              <Text className="mb-2 text-base font-semibold text-servi-texto">
-                Recorrido de reportes
-              </Text>
+            <View className="mb-3 overflow-hidden rounded-xl border border-servi-borde">
               <ReportMapView
-                title="Todos los puntos GPS del servicio"
-                height={240}
+                title="Recorrido GPS"
+                height={160}
                 points={routePoints}
                 showOpenMaps={false}
               />
-              <View className="mt-3">
+              <View className="border-t border-servi-borde bg-servi-superficie px-3 py-2">
                 <GoogleMapsActions
                   lat={routePoints[routePoints.length - 1].lat}
                   lng={routePoints[routePoints.length - 1].lng}
                   label={bitacora.nombre ?? 'Servicio'}
                   routePoints={routePoints}
-                  coordsLabel="Ultimo reporte GPS"
-                  variant="full"
+                  coordsLabel="Ultimo reporte"
+                  variant="compact"
                   showRoute
                 />
               </View>
             </View>
           ) : null}
 
-          <View className="mb-4 flex-row gap-2">
-            <View className="flex-1 rounded-xl border border-servi-borde bg-servi-superficie p-3">
-              <Text className="text-[10px] uppercase text-servi-suave">Empresa</Text>
-              <Text className="text-sm font-medium text-servi-texto">
-                {bitacora.empresa_contratante ?? '—'}
-              </Text>
-            </View>
-            <View className="flex-1 rounded-xl border border-servi-borde bg-servi-superficie p-3">
-              <Text className="text-[10px] uppercase text-servi-suave">Unidad</Text>
-              <Text className="text-sm font-medium text-servi-texto">{bitacora.unidad ?? '—'}</Text>
-            </View>
+          <View className="mb-3 flex-row gap-2">
+            <MiniStat label="Reportes" value={String(evidencias.length)} />
+            <MiniStat label="Fotos" value={String(fotosVisibles)} accent />
+            <MiniStat label="Custodio" value={bitacora.custodio_nombre?.split(' ')[0] ?? '—'} />
           </View>
 
-          {bitacora.estado === 'completado' ? (
-            <AppButton
-              label="Exportar PDF"
-              variant="accent"
-              loading={exporting}
-              onPress={handleExportPdf}
-            />
-          ) : null}
-
-          <Text className="mb-3 mt-6 text-base font-semibold text-servi-texto">
-            Detalle por reporte
+          <Text className="mb-2 text-sm font-semibold text-servi-texto">
+            Evidencias ({sortedEvidencias.length})
           </Text>
 
-          {evidencias.length === 0 ? (
-            <Text className="text-servi-suave">
-              Este servicio aun no tiene reportes con foto y GPS.
-            </Text>
+          {sortedEvidencias.length === 0 ? (
+            <Text className="text-servi-suave">Este servicio aun no tiene reportes con foto y GPS.</Text>
           ) : (
-            evidencias.map((ev, index) => (
-              <EvidenciaReportCard
+            sortedEvidencias.map((ev, index) => (
+              <EvidenciaCompactCard
                 key={ev.id}
-                index={evidencias.length - index}
+                index={sortedEvidencias.length - index}
                 latitud={ev.latitud}
                 longitud={ev.longitud}
                 timestamp={ev.timestamp}
-                urlImagen={ev.url_imagen}
+                imageUrl={ev.displayUrl}
                 observaciones={ev.observaciones}
+                metadata={ev.metadata}
               />
             ))
           )}
@@ -172,11 +167,27 @@ export default function AdminReporteDetailScreen() {
   );
 }
 
-function Badge({ label, accent }: { label: string; accent?: boolean }) {
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
-    <View className={`rounded-full px-3 py-1 ${accent ? 'bg-servi-acento' : 'bg-servi-fondo'}`}>
-      <Text className={`text-xs font-semibold ${accent ? 'text-servi-fondo' : 'text-servi-texto'}`}>
-        {label}
+    <View
+      className={`flex-1 rounded-xl border px-2 py-2 ${
+        accent ? 'border-servi-acento/40 bg-servi-acento/10' : 'border-servi-borde bg-servi-superficie'
+      }`}
+    >
+      <Text className="text-[9px] uppercase text-servi-suave">{label}</Text>
+      <Text
+        className={`text-sm font-bold ${accent ? 'text-servi-acento' : 'text-servi-texto'}`}
+        numberOfLines={1}
+      >
+        {value}
       </Text>
     </View>
   );

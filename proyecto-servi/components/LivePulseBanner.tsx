@@ -15,6 +15,7 @@ import { FadeInView } from './FadeInView';
 type Props = {
   count: number;
   label?: string;
+  headline?: string;
   tone?: 'emerald' | 'sky' | 'orange';
 };
 
@@ -27,6 +28,7 @@ const tones = {
 export function LivePulseBanner({
   count,
   label = 'servicios en monitoreo ahora',
+  headline,
   tone = 'emerald',
 }: Props) {
   const pulse = useSharedValue(1);
@@ -67,7 +69,7 @@ export function LivePulseBanner({
           <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.dot }} />
         </View>
         <View className="flex-1">
-          <Text className={`text-lg font-black ${t.text}`}>{count} en vivo</Text>
+          <Text className={`text-lg font-black ${t.text}`}>{headline ?? `${count} activas`}</Text>
           <Text className="text-xs text-servi-suave">{label}</Text>
         </View>
         <Ionicons name="pulse" size={22} color={t.dot} />

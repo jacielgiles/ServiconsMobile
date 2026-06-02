@@ -1,4 +1,4 @@
-import { Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
 type Props = {
   label: string;
@@ -7,6 +7,7 @@ type Props = {
   placeholder?: string;
   multiline?: boolean;
   required?: boolean;
+  keyboardType?: KeyboardTypeOptions;
 };
 
 export function WizardField({
@@ -16,6 +17,7 @@ export function WizardField({
   placeholder,
   multiline,
   required,
+  keyboardType,
 }: Props) {
   return (
     <View className="mb-4">
@@ -30,6 +32,7 @@ export function WizardField({
         placeholder={placeholder ?? label}
         placeholderTextColor="#A8B8CC"
         multiline={multiline}
+        keyboardType={keyboardType}
         numberOfLines={multiline ? 4 : 1}
       />
     </View>

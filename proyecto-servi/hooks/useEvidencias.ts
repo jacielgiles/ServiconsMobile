@@ -1,10 +1,20 @@
 import { useCallback } from 'react';
 
+import { upsertLiveLocation } from '../services/locationService';
 import { supabase } from '../lib/supabaseClient';
+import type { EvidenceStampMeta } from '../lib/evidenceMeta';
 
 async function uriToArrayBuffer(uri: string): Promise<ArrayBuffer> {
   const response = await fetch(uri);
   return response.arrayBuffer();
+}
+
+function svgDataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
+  const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+  const binary = globalThis.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 export function useEvidencias() {
@@ -16,7 +26,7 @@ export function useEvidencias() {
   }, []);
 
   const uploadFoto = useCallback(
-    async (uri: string, custodioId: string, bitacoraId: string): Promise<string | null> => {
+    async (uri: string, custodioId: string, bitacoraId: string): Promise<{ url: string; path: string } | null> => {
       const arrayBuffer = await uriToArrayBuffer(uri);
       const path = `${custodioId}/${bitacoraId}/${Date.now()}.jpg`;
 
@@ -26,7 +36,9 @@ export function useEvidencias() {
       });
 
       if (error) return null;
-      return getSignedUrl('evidencias', path);
+      const url = await getSignedUrl('evidencias', path);
+      if (!url) return null;
+      return { url, path };
     },
     [getSignedUrl],
   );
@@ -39,8 +51,7 @@ export function useEvidencias() {
       tipo: 'operador' | 'custodio',
     ): Promise<string | null> => {
       const path = `${custodioId}/${bitacoraId}/firma_${tipo}_${Date.now()}.svg`;
-      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
-      const arrayBuffer = await uriToArrayBuffer(`data:image/svg+xml;base64,${base64}`);
+      const arrayBuffer = svgDataUrlToArrayBuffer(dataUrl);
 
       const { error } = await supabase.storage.from('firmas').upload(path, arrayBuffer, {
         contentType: 'image/svg+xml',
@@ -58,16 +69,41 @@ export function useEvidencias() {
       bitacora_id: string;
       custodio_id: string;
       url_imagen: string;
+      storage_path?: string | null;
       latitud: number;
       longitud: number;
+      precision_m?: number | null;
+      altitud?: number | null;
       observaciones?: string;
+      metadata?: EvidenceStampMeta | Record<string, unknown> | null;
     }) => {
+      const timestamp = new Date().toISOString();
+
       const { error } = await supabase.from('evidencias').insert({
-        ...params,
-        timestamp: new Date().toISOString(),
+        bitacora_id: params.bitacora_id,
+        custodio_id: params.custodio_id,
+        url_imagen: params.url_imagen,
+        storage_path: params.storage_path ?? null,
+        latitud: params.latitud,
+        longitud: params.longitud,
+        precision_m: params.precision_m ?? null,
+        altitud: params.altitud ?? null,
+        observaciones: params.observaciones ?? null,
+        metadata: params.metadata ?? null,
+        timestamp,
       });
 
-      return !error;
+      if (error) return false;
+
+      await upsertLiveLocation({
+        custodioId: params.custodio_id,
+        bitacoraId: params.bitacora_id,
+        latitud: params.latitud,
+        longitud: params.longitud,
+        precision_m: params.precision_m ?? null,
+      });
+
+      return true;
     },
     [],
   );
@@ -81,7 +117,9 @@ export function useEvidencias() {
 
     const { data, error } = await supabase
       .from('evidencias')
-      .select('id, bitacora_id, url_imagen, latitud, longitud, observaciones, timestamp')
+      .select(
+        'id, bitacora_id, url_imagen, storage_path, latitud, longitud, precision_m, observaciones, metadata, timestamp',
+      )
       .eq('bitacora_id', bitacoraId)
       .eq('custodio_id', session.user.id)
       .order('timestamp', { ascending: false });

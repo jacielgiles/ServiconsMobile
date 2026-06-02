@@ -8,7 +8,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useLocation } from '../../../hooks/useLocation';
 import { usePermissions } from '../../../hooks/usePermissions';
-import { startRoute } from '../../../services/n8nService';
+import { upsertLiveLocation } from '../../../services/locationService';
 
 /** Pantalla 5 — Permisos antes del servicio en proceso */
 export default function CustodyPermissionsScreen() {
@@ -31,30 +31,23 @@ export default function CustodyPermissionsScreen() {
     const permitted = await ensureFieldPermissions();
     if (!permitted) return;
 
-    const remoteJid = bitacora.formulario?.whatsappGrupo?.remoteJid;
-    if (!remoteJid) {
-      Alert.alert('Falta grupo WhatsApp', 'Esta bitacora no tiene grupo configurado.');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const { latitude, longitude } = await getCurrentLocation();
+      const { latitude, longitude, accuracy } = await getCurrentLocation();
 
       if (bitacora.estado === 'pendiente') {
         const ok = await iniciarCustodia(id, session.user.id);
-        if (!ok) throw new Error('No se pudo activar en Supabase');
-
-        await startRoute({
-          bitacora_id: id,
-          custodio_id: session.user.id,
-          empresa: bitacora.empresa_contratante ?? '',
-          remoteJid,
-          timestamp_inicio: new Date().toISOString(),
-          ubicacion_inicio: { lat: latitude, lng: longitude },
-        });
+        if (!ok) throw new Error('No se pudo activar la custodia en Supabase');
       }
+
+      await upsertLiveLocation({
+        custodioId: session.user.id,
+        bitacoraId: id,
+        latitud: latitude,
+        longitud: longitude,
+        precision_m: accuracy ?? null,
+      });
 
       router.replace({ pathname: '/(app)/custody/active', params: { id } });
     } catch (e) {
@@ -75,7 +68,7 @@ export default function CustodyPermissionsScreen() {
           <Text className="text-xs uppercase text-emerald-100">Preparacion</Text>
           <Text className="text-2xl font-bold text-white">Permisos del dispositivo</Text>
           <Text className="mt-2 text-sm text-emerald-100">
-            Camara y GPS son obligatorios para evidencias y monitoreo en mapa.
+            Camara y GPS son obligatorios. Todo se guarda en Supabase (sin n8n).
           </Text>
         </View>
 

@@ -168,7 +168,7 @@ export default function AdminBitacoraDetailScreen() {
             className="mt-4 items-center rounded-2xl border border-sky-500/40 bg-sky-500/10 py-4"
             onPress={() => router.push(`/(app)/admin/reporte/${id}`)}
           >
-            <Text className="font-bold text-sky-400">Ver mapa GPS y evidencias →</Text>
+            <Text className="font-bold text-sky-400">Ver reporte visual y exportar PDF →</Text>
           </Pressable>
 
           {bitacora.estado === 'activo' ? (
