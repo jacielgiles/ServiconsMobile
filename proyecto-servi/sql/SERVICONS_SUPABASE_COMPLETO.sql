@@ -19,6 +19,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 DROP FUNCTION IF EXISTS public.can_assign_role(TEXT, TEXT) CASCADE;
 DROP FUNCTION IF EXISTS public.is_admin_or_jefe() CASCADE;
+DROP FUNCTION IF EXISTS public.is_super_user() CASCADE;
 DROP FUNCTION IF EXISTS public.set_updated_at() CASCADE;
 
 DROP POLICY IF EXISTS "custodio_firmas_read" ON storage.objects;
@@ -46,6 +47,7 @@ DROP TABLE IF EXISTS public.custodio_ubicaciones_live CASCADE;
 DROP TABLE IF EXISTS public.sos_alerts CASCADE;
 DROP TABLE IF EXISTS public.evidencias CASCADE;
 DROP TABLE IF EXISTS public.bitacoras CASCADE;
+DROP TABLE IF EXISTS public.role_change_requests CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
 
 -- =============================================================================
@@ -63,7 +65,7 @@ CREATE TABLE public.profiles (
   nombre      TEXT NOT NULL DEFAULT 'Usuario',
   email       TEXT,
   celular     TEXT,
-  role        TEXT NOT NULL DEFAULT 'custodio' CHECK (role IN (
+  role        TEXT NOT NULL DEFAULT 'cliente' CHECK (role IN (
                 'super_usuario', 'jefe_custodios', 'custodio', 'cliente'
               )),
   empresa     TEXT,
@@ -93,6 +95,20 @@ AS $$
   );
 $$;
 
+CREATE OR REPLACE FUNCTION public.is_super_user()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+      AND role = 'super_usuario'
+  );
+$$;
+
 CREATE POLICY "admin_lee_profiles" ON public.profiles
   FOR SELECT
   USING (public.is_admin_or_jefe());
@@ -110,13 +126,46 @@ IMMUTABLE
 AS $$
 BEGIN
   IF actor_role = 'super_usuario' THEN
-    RETURN target_role IN ('custodio', 'jefe_custodios', 'cliente');
+    RETURN target_role IN ('super_usuario', 'custodio', 'jefe_custodios', 'cliente');
   ELSIF actor_role = 'jefe_custodios' THEN
     RETURN target_role IN ('custodio', 'cliente');
   END IF;
   RETURN FALSE;
 END;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- 1B. SOLICITUDES DE CAMBIO DE ROL
+-- -----------------------------------------------------------------------------
+CREATE TABLE public.role_change_requests (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  requested_role      TEXT NOT NULL CHECK (requested_role IN (
+                        'super_usuario', 'jefe_custodios', 'custodio'
+                      )),
+  status              TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  requested_by_name   TEXT,
+  requested_by_email  TEXT,
+  empresa             TEXT,
+  requested_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reviewed_at         TIMESTAMPTZ,
+  reviewed_by         UUID REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+ALTER TABLE public.role_change_requests ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "usuario_ve_su_solicitud" ON public.role_change_requests
+  FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "usuario_crea_su_solicitud" ON public.role_change_requests
+  FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "super_usuario_gestiona_solicitudes" ON public.role_change_requests
+  FOR ALL
+  USING (public.is_super_user())
+  WITH CHECK (public.is_super_user());
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -130,14 +179,34 @@ BEGIN
     NEW.id,
     NEW.email,
     COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'nombre'), ''), split_part(NEW.email, '@', 1)),
-    COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), ''), 'custodio'),
+    'cliente',
     NULLIF(TRIM(NEW.raw_user_meta_data->>'empresa'), '')
   )
   ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
     nombre = EXCLUDED.nombre,
-    role = EXCLUDED.role,
+    role = public.profiles.role,
     empresa = EXCLUDED.empresa;
+
+  IF NEW.raw_user_meta_data ? 'requested_role'
+     AND NULLIF(TRIM(NEW.raw_user_meta_data->>'requested_role'), '') IS NOT NULL
+     AND (NEW.raw_user_meta_data->>'requested_role') <> 'cliente' THEN
+    INSERT INTO public.role_change_requests (
+      user_id,
+      requested_role,
+      status,
+      requested_by_name,
+      requested_by_email,
+      empresa
+    ) VALUES (
+      NEW.id,
+      NEW.raw_user_meta_data->>'requested_role',
+      'pending',
+      COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'nombre'), ''), split_part(NEW.email, '@', 1)),
+      NEW.email,
+      NULLIF(TRIM(NEW.raw_user_meta_data->>'empresa'), '')
+    );
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -151,7 +220,7 @@ SELECT
   u.id,
   u.email,
   COALESCE(NULLIF(TRIM(u.raw_user_meta_data->>'nombre'), ''), split_part(u.email, '@', 1), 'Usuario'),
-  COALESCE(NULLIF(TRIM(u.raw_user_meta_data->>'role'), ''), 'custodio'),
+  COALESCE(NULLIF(TRIM(u.raw_user_meta_data->>'role'), ''), 'cliente'),
   NULLIF(TRIM(u.raw_user_meta_data->>'empresa'), '')
 FROM auth.users u
 WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id);

@@ -7,7 +7,7 @@ const corsHeaders = {
 
 type UpdateUserBody = {
   userId: string;
-  role?: 'custodio' | 'jefe_custodios' | 'cliente';
+  role?: 'super_usuario' | 'custodio' | 'jefe_custodios' | 'cliente';
   activo?: boolean;
   empresa?: string | null;
   nombre?: string;
@@ -15,6 +15,19 @@ type UpdateUserBody = {
   email?: string;
   newPassword?: string;
 };
+
+function canAssignRole(
+  actorRole: string,
+  targetRole: NonNullable<UpdateUserBody['role']>,
+): boolean {
+  if (actorRole === 'super_usuario') {
+    return ['super_usuario', 'jefe_custodios', 'custodio', 'cliente'].includes(targetRole);
+  }
+  if (actorRole === 'jefe_custodios') {
+    return ['custodio', 'cliente'].includes(targetRole);
+  }
+  return false;
+}
 
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -96,8 +109,8 @@ Deno.serve(async (req) => {
     return json({ error: 'Usuario no encontrado' }, 404);
   }
 
-  if (targetProfile.role === 'super_usuario') {
-    return json({ error: 'No se puede modificar un super usuario' }, 403);
+  if (targetProfile.role === 'super_usuario' && actorProfile.role !== 'super_usuario') {
+    return json({ error: 'Solo super usuario puede modificar a otro super usuario' }, 403);
   }
 
   const profileUpdates: Record<string, unknown> = {};
@@ -111,12 +124,11 @@ Deno.serve(async (req) => {
   }
 
   if (role) {
-    const { data: canAssign, error: rpcError } = await supabaseAdmin.rpc('can_assign_role', {
-      actor_role: actorProfile.role,
-      target_role: role,
-    });
+    if (role === 'super_usuario' && actorProfile.role !== 'super_usuario') {
+      return json({ error: 'Solo super usuario puede asignar el rol super usuario' }, 403);
+    }
 
-    if (rpcError || !canAssign) {
+    if (!canAssignRole(actorProfile.role, role)) {
       return json({ error: 'No tienes permiso para asignar ese rol' }, 403);
     }
 

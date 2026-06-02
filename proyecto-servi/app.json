@@ -12,7 +12,11 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para los reportes.",
         "NSCameraUsageDescription": "Necesitamos la cámara para las evidencias.",
-        "LSApplicationQueriesSchemes": ["comgooglemaps", "googlemaps", "geo"]
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps",
+          "googlemaps",
+          "geo"
+        ]
       }
     },
     "android": {
@@ -22,8 +26,19 @@
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "CAMERA"
-      ]
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.anonymous.serviconsmobile"
     },
     "web": {
       "favicon": "./assets/favicon.png",

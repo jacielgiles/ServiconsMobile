@@ -11,8 +11,8 @@ export const ROLES: { value: UserRole; label: string; description: string }[] = 
   },
   {
     value: 'jefe_custodios',
-    label: 'Jefe de custodios',
-    description: 'Supervisa operaciones. Crea custodios y clientes.',
+    label: 'Admin',
+    description: 'Supervisa operaciones y gestiona custodias.',
   },
   {
     value: 'custodio',
@@ -91,7 +91,7 @@ export function canManageUsers(role: UserRole | null | undefined): boolean {
 
 export function getCreatableRoles(actorRole: UserRole | null | undefined): UserRole[] {
   if (actorRole === 'super_usuario') {
-    return ['custodio', 'jefe_custodios', 'cliente'];
+    return ['super_usuario', 'custodio', 'jefe_custodios', 'cliente'];
   }
   if (actorRole === 'jefe_custodios') {
     return ['custodio', 'cliente'];

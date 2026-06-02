@@ -15,7 +15,13 @@ import { AppButton } from '../../../components/AppButton';
 import { DashboardHeader } from '../../../components/DashboardShell';
 import { useAuth } from '../../../hooks/useAuth';
 import { getCreatableRoleOptions, getRoleLabel } from '../../../lib/roles';
-import { createUserAsAdmin, listManagedProfiles } from '../../../services/adminService';
+import {
+  createUserAsAdmin,
+  listManagedProfiles,
+  listRoleRequests,
+  resolveRoleRequest,
+  type RoleRequestRow,
+} from '../../../services/adminService';
 import type { UserRole } from '../../../types/models';
 
 export default function AdminUsersScreen() {
@@ -32,6 +38,7 @@ export default function AdminUsersScreen() {
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<RoleRequestRow[]>([]);
   const [users, setUsers] = useState<
     Array<{
       id: string;
@@ -45,11 +52,34 @@ export default function AdminUsersScreen() {
 
   const loadUsers = useCallback(async () => {
     setListLoading(true);
-    const { data, error: listError } = await listManagedProfiles();
+    const [{ data, error: listError }, { data: pendingRequests }] = await Promise.all([
+      listManagedProfiles(),
+      profile?.role === 'super_usuario'
+        ? listRoleRequests()
+        : Promise.resolve({ data: [], error: null }),
+    ]);
     setUsers(data);
+    setRequests(pendingRequests);
     if (listError) setError(listError);
     setListLoading(false);
-  }, []);
+  }, [profile?.role]);
+
+  const handleResolveRequest = async (item: RoleRequestRow, approve: boolean) => {
+    const { error: resolveError } = await resolveRoleRequest({
+      requestId: item.id,
+      userId: item.user_id,
+      requestedRole: item.requested_role,
+      approve,
+    });
+
+    if (resolveError) {
+      Alert.alert('Error', resolveError);
+      return;
+    }
+
+    Alert.alert('Listo', approve ? 'Solicitud aprobada.' : 'Solicitud rechazada.');
+    loadUsers();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -200,6 +230,40 @@ export default function AdminUsersScreen() {
           )}
 
           <Text className="mb-3 mt-6 text-lg font-semibold text-servi-texto">Usuarios registrados</Text>
+
+          {profile?.role === 'super_usuario' ? (
+            <View className="mb-6 rounded-xl border border-servi-borde bg-servi-superficie p-4">
+              <Text className="mb-2 text-base font-semibold text-servi-texto">Solicitudes de rol</Text>
+              {requests.length === 0 ? (
+                <Text className="text-sm text-servi-suave">No hay solicitudes pendientes.</Text>
+              ) : (
+                requests.map((item) => (
+                  <View key={item.id} className="mb-3 rounded-lg border border-servi-borde bg-servi-fondo p-3">
+                    <Text className="font-semibold text-servi-texto">
+                      {item.requested_by_name ?? 'Usuario'} solicita {getRoleLabel(item.requested_role)}
+                    </Text>
+                    <Text className="text-xs text-servi-suave">
+                      {item.requested_by_email ?? ''} {item.empresa ? `· ${item.empresa}` : ''}
+                    </Text>
+                    <View className="mt-2 flex-row gap-2">
+                      <Pressable
+                        className="flex-1 items-center rounded-lg bg-emerald-600 py-2"
+                        onPress={() => handleResolveRequest(item, true)}
+                      >
+                        <Text className="text-xs font-semibold text-white">Aprobar</Text>
+                      </Pressable>
+                      <Pressable
+                        className="flex-1 items-center rounded-lg bg-servi-peligro py-2"
+                        onPress={() => handleResolveRequest(item, false)}
+                      >
+                        <Text className="text-xs font-semibold text-white">Rechazar</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          ) : null}
 
           {listLoading ? (
             <ActivityIndicator color="#F97316" />

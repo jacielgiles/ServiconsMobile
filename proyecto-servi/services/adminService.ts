@@ -88,10 +88,21 @@ export async function createUserAsAdmin(params: CreateUserParams): Promise<{ err
       body: JSON.stringify(params),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    let payload: { error?: string } = {};
+    let rawBody = '';
+    try {
+      rawBody = await response.text();
+      payload = rawBody ? (JSON.parse(rawBody) as { error?: string }) : {};
+    } catch {
+      payload = {};
+    }
 
     if (!response.ok) {
-      return { error: payload.error ?? 'No se pudo crear el usuario' };
+      return {
+        error:
+          payload.error ??
+          (rawBody ? `No se pudo crear el usuario: ${rawBody}` : 'No se pudo crear el usuario'),
+      };
     }
 
     return { error: null };
@@ -131,10 +142,52 @@ export async function updateUserAsAdmin(params: {
       body: JSON.stringify(params),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    let payload: { error?: string } = {};
+    let rawBody = '';
+    try {
+      rawBody = await response.text();
+      payload = rawBody ? (JSON.parse(rawBody) as { error?: string }) : {};
+    } catch {
+      payload = {};
+    }
 
     if (!response.ok) {
-      return { error: payload.error ?? 'No se pudo actualizar el usuario' };
+      const remoteError =
+        payload.error ??
+        (rawBody
+          ? `No se pudo actualizar el usuario: ${rawBody}`
+          : 'No se pudo actualizar el usuario');
+
+      const canFallbackToProfilesOnly =
+        (remoteError.includes('NOT_FOUND') || remoteError.toLowerCase().includes('function was not found')) &&
+        !params.email &&
+        !params.newPassword;
+
+      if (canFallbackToProfilesOnly) {
+        const updates: Record<string, unknown> = {};
+        if (params.role) updates.role = params.role;
+        if (typeof params.activo === 'boolean') updates.activo = params.activo;
+        if (params.empresa !== undefined) updates.empresa = params.empresa;
+        if (params.nombre !== undefined) updates.nombre = params.nombre;
+        if (params.celular !== undefined) updates.celular = params.celular;
+
+        if (Object.keys(updates).length === 0) {
+          return { error: 'No hay cambios compatibles para fallback local.' };
+        }
+
+        const { error: fallbackError } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', params.userId);
+
+        if (fallbackError) {
+          return { error: `Fallback local fallo: ${fallbackError.message}` };
+        }
+
+        return { error: null };
+      }
+
+      return { error: remoteError };
     }
 
     return { error: null };
@@ -642,6 +695,138 @@ export async function updateSosEstado(
   estado: AdminSosRow['estado'],
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.from('sos_alerts').update({ estado }).eq('id', alertId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+export type RoleRequestRow = {
+  id: string;
+  user_id: string;
+  requested_role: UserRole;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_at: string;
+  reviewed_at: string | null;
+  requested_by_name: string | null;
+  requested_by_email: string | null;
+  empresa: string | null;
+};
+
+export async function listRoleRequests(): Promise<{ data: RoleRequestRow[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from('role_change_requests')
+    .select(
+      'id, user_id, requested_role, status, requested_at, reviewed_at, requested_by_name, requested_by_email, empresa',
+    )
+    .eq('status', 'pending')
+    .order('requested_at', { ascending: true });
+
+  if (error) return { data: [], error: error.message };
+  return { data: (data ?? []) as RoleRequestRow[], error: null };
+}
+
+export async function resolveRoleRequest(params: {
+  requestId: string;
+  userId: string;
+  requestedRole: UserRole;
+  approve: boolean;
+}): Promise<{ error: string | null }> {
+  const { requestId, userId, requestedRole, approve } = params;
+
+  if (approve) {
+    const { error: roleError } = await updateUserAsAdmin({
+      userId,
+      role: requestedRole,
+    });
+    if (roleError) return { error: roleError };
+  }
+
+  const { error } = await supabase
+    .from('role_change_requests')
+    .update({
+      status: approve ? 'approved' : 'rejected',
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: (await supabase.auth.getUser()).data.user?.id ?? null,
+    })
+    .eq('id', requestId);
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+export async function getMyPendingRoleRequest(): Promise<{
+  data: RoleRequestRow | null;
+  error: string | null;
+}> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { data: null, error: 'Sesion no valida.' };
+  }
+
+  const { data, error } = await supabase
+    .from('role_change_requests')
+    .select(
+      'id, user_id, requested_role, status, requested_at, reviewed_at, requested_by_name, requested_by_email, empresa',
+    )
+    .eq('user_id', user.id)
+    .eq('status', 'pending')
+    .order('requested_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+  return { data: (data as RoleRequestRow | null) ?? null, error: null };
+}
+
+export async function createRoleRequest(params: {
+  requestedRole: UserRole;
+  empresa?: string | null;
+}): Promise<{ error: string | null }> {
+  if (params.requestedRole === 'cliente') {
+    return { error: 'No necesitas solicitar el rol cliente.' };
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return { error: 'Sesion no valida. Vuelve a iniciar sesion.' };
+  }
+
+  const { data: pending, error: pendingError } = await getMyPendingRoleRequest();
+  if (pendingError) {
+    return { error: pendingError };
+  }
+  if (pending) {
+    return {
+      error: `Ya tienes una solicitud pendiente para ${pending.requested_role}. Espera a que un super usuario la revise.`,
+    };
+  }
+
+  const { data: myProfile, error: profileError } = await supabase
+    .from('profiles')
+    .select('nombre, email')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    return { error: profileError.message };
+  }
+
+  const { error } = await supabase.from('role_change_requests').insert({
+    user_id: user.id,
+    requested_role: params.requestedRole,
+    status: 'pending',
+    requested_by_name: myProfile?.nombre ?? user.email ?? 'Usuario',
+    requested_by_email: myProfile?.email ?? user.email ?? null,
+    empresa: params.empresa?.trim() || null,
+  });
+
   if (error) return { error: error.message };
   return { error: null };
 }

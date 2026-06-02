@@ -9,7 +9,26 @@ function toBase64Utf8(input: string): string {
     );
     return globalThis.btoa(utf8);
   }
-  return input;
+
+  const utf8Bytes = new TextEncoder().encode(input);
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let output = '';
+
+  for (let index = 0; index < utf8Bytes.length; index += 3) {
+    const byte1 = utf8Bytes[index] ?? 0;
+    const byte2 = utf8Bytes[index + 1] ?? 0;
+    const byte3 = utf8Bytes[index + 2] ?? 0;
+    const chunk = (byte1 << 16) | (byte2 << 8) | byte3;
+
+    const c1 = alphabet[(chunk >> 18) & 63];
+    const c2 = alphabet[(chunk >> 12) & 63];
+    const c3 = index + 1 < utf8Bytes.length ? alphabet[(chunk >> 6) & 63] : '=';
+    const c4 = index + 2 < utf8Bytes.length ? alphabet[chunk & 63] : '=';
+
+    output += `${c1}${c2}${c3}${c4}`;
+  }
+
+  return output;
 }
 
 export function strokeToPath(stroke: StrokePoint[]): string {

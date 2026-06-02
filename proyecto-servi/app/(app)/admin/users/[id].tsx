@@ -42,6 +42,7 @@ export default function AdminUserDetailScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [createdAt, setCreatedAt] = useState('');
   const [userId, setUserId] = useState('');
+  const [originalEmail, setOriginalEmail] = useState('');
   const [isSuperUser, setIsSuperUser] = useState(false);
   const [isSelf, setIsSelf] = useState(false);
 
@@ -58,6 +59,7 @@ export default function AdminUserDetailScreen() {
     setUserId(data.id);
     setNombre(data.nombre);
     setEmail(data.email ?? '');
+    setOriginalEmail((data.email ?? '').trim());
     setCelular(data.celular ?? '');
     setEmpresa(data.empresa ?? '');
     setRole(data.role);
@@ -110,7 +112,10 @@ export default function AdminUserDetailScreen() {
       role: isSelf ? undefined : role,
       activo: isSelf ? undefined : activo,
       empresa: empresa.trim() || null,
-      email: email.trim() !== '' ? email.trim() : undefined,
+      email:
+        email.trim() !== '' && email.trim() !== originalEmail
+          ? email.trim()
+          : undefined,
       newPassword: newPassword.trim() || undefined,
     });
 

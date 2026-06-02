@@ -1,0 +1,306 @@
+================================================================================
+SERVICONS MOBILE — GUION PROMOCIONAL PARA EXPOSICIÓN
+Duración objetivo del video: 1 minuto 30 segundos (90 s)
+Stack: Expo SDK 54 · React Native · TypeScript · Supabase · NativeWind
+================================================================================
+
+NOTA PARA GRABACIÓN
+-------------------
+Este archivo incluye:
+  A) Guion principal cronometrado (~90 s) — léelo en voz rápida pero clara.
+  B) Desglose escena por escena (qué mostrar en pantalla en cada segundo).
+  C) Inventario técnico completo (nada omitido — usar en subtítulos, paneles o versión extendida).
+  D) Textos cortos para overlays / tarjetas del video.
+
+Si al leer el bloque A te pasas de 90 s, acelera ligeramente o recorta frases entre
+corchetes. Si te queda tiempo, añade datos del bloque C como voz en off sobre B-roll.
+
+
+================================================================================
+A) GUION PRINCIPAL — VOZ EN OFF (~90 SEGUNDOS)
+================================================================================
+
+[0:00 – 0:08 | APERTURA — logo + welcome]
+«Servicons Mobile: la plataforma móvil de custodia y monitoreo para seguridad
+privada. Cuatro roles — Super Usuario, Jefe de Custodios, Custodio y Cliente —
+cada uno con su propio panel, colores y permisos. Login seguro con Supabase Auth,
+recuperación de contraseña por correo y consentimiento de privacidad al entrar.»
+
+[0:08 – 0:22 | CUSTODIO — home y wizard]
+«El Custodio opera en campo. En su Home ve servicios pendientes, activos y
+completados con gráficas, KPIs y actualización automática. Crea bitácoras en un
+wizard de siete pasos: datos del servicio, origen y destino con calle, código
+postal, colonia, municipio, estado, referencia, GPS y vista previa en Google Maps;
+vehículo en custodia; tiempos y odómetro; intervalo de reportes en minutos;
+responsables con firma digital SVG; operador uno y dos con placas, remolques,
+sellos y pedimento; observaciones finales. Todo se guarda en Supabase como JSON.»
+
+[0:22 – 0:42 | CUSTODIO — custodia activa]
+«Al iniciar custodia pide permisos de cámara y GPS, activa el servicio y entra
+a la pantalla central: temporizador circular que cuenta el próximo reporte y
+también dispara foto manual; barra de estatus — al corriente, sin internet o
+error; mapa con ubicación en vivo transmitida solo con la app abierta, cada treinta
+segundos, a la tabla custodio_ubicaciones_live; botón SOS siempre visible que
+registra alerta con coordenadas; cada reporte sube foto con sello GPS, precisión,
+metadata y observaciones al Storage evidencias. Al terminar: modal de confirmación,
+tipo de cierre — acompañamiento o custodia hasta destino — foto final, firmas del
+operador y custodio en canvas SVG, observaciones y cierre con estado completado.»
+
+[0:42 – 0:58 | ADMIN — panel de control]
+«Super Usuario y Jefe de Custodios administran desde el panel naranja: KPIs de
+activas, SOS, pendientes y completadas; mapa de flota en vivo; gestión de usuarios
+con Edge Functions — crear custodios, jefes y clientes según jerarquía; editar
+roles, activar o desactivar cuentas; listado y edición de bitácoras; monitoreo de
+custodias activas con badge GPS — app conectada, señal vieja u offline; alertas
+SOS con mapa y navegación; reporte visual con recorrido origen-reportes-destino,
+galería compacta con fotos firmadas y un solo botón Exportar PDF local con firmas,
+datos del formulario, evidencias en dos columnas y alertas SOS.»
+
+[0:58 – 1:12 | CLIENTE + PAPELERA + TECNOLOGÍA]
+«El Cliente entra a su portal en tono azul: solo ve servicios de su empresa por
+RLS — programados, activos e historial — con GPS en vivo cuando hay custodia activa,
+mapas, gráficas y evidencias en solo lectura. Super Usuario además tiene Papelera
+con soft delete de siete días, restauración, purga automática y Limpieza masiva de
+datos. Backend: Supabase Postgres, Storage privado, Realtime, políticas RLS por
+rol; toasts animados, auto-refresh en pantallas clave, interfaz oscura verde Servicons
+con NativeWind — sin pantallas de adorno, cada acción tiene destino operativo real.»
+
+[1:12 – 1:30 | CIERRE]
+«Servicons Mobile: trazabilidad GPS, evidencia fotográfica, firmas digitales,
+alertas SOS, monitoreo en vivo, portal cliente y reportes PDF — custodia
+profesional desde el celular del custodio hasta el escritorio del administrador.
+[Demo en vivo / QR de descarga / contacto Servicons.]»
+
+
+================================================================================
+B) DESGLOSE ESCENA POR ESCENA (QUÉ MOSTRAR EN PANTALLA)
+================================================================================
+
+SEG 0–8   Welcome: logo, chips de roles, botón Iniciar sesión, modal privacidad.
+SEG 8–15  Login + registro con selector de rol; reset password.
+SEG 15–22 Wizard pasos 1→7: formulario dirección CP, SignaturePad, crear bitácora.
+SEG 22–28 Home custodio: tabs pendiente/activo/completado, modal confirmar custodia.
+SEG 28–32 Permisos cámara/GPS; pantalla active: timer, SOS, estatus reporte.
+SEG 32–38 Reporte automático/manual: cámara, toast éxito, contador reportes.
+SEG 38–42 Flujo cierre: tipo término, foto, firmas, observaciones, home completados.
+SEG 42–48 Admin home: KPIs, mapa preview, tarjetas navegación.
+SEG 48–52 Admin activos: mapa live, badges app conectada / sin señal.
+SEG 52–56 Admin SOS: mapa emergencia, marcar atendida.
+SEG 56–62 Admin reporte visual: mapa recorrido, EvidenciaCompactCard, Exportar PDF.
+SEG 62–66 Admin bitácora edit + usuarios crear/editar.
+SEG 66–72 Cliente home + detalle: GPS live, galería, gráficas.
+SEG 72–78 Papelera + limpieza (super usuario).
+SEG 78–90 Montaje rápido paleta colores + cierre logo.
+
+
+================================================================================
+C) INVENTARIO TÉCNICO COMPLETO (CHECKLIST — NADA OMITIDO)
+================================================================================
+
+--- PLATAFORMA Y ARQUITECTURA ---
+[ ] App móvil Expo SDK 54, React Native, TypeScript, expo-router file-based
+[ ] Estilos NativeWind v4 + Tailwind (prefijo servi-*), fondo #0B1F17
+[ ] Estado global Zustand (useBitacoraStore) para wizard
+[ ] Navegación por grupos: (app), auth, legal; guard de rutas por rol
+[ ] Persistencia sesión Supabase en AsyncStorage
+[ ] Consentimiento privacidad en AsyncStorage (PrivacyConsentModal)
+
+--- AUTENTICACIÓN ---
+[ ] Login email/contraseña con autofill nativo y toggle ver contraseña
+[ ] Registro con validación en vivo (email, contraseña, confirmación)
+[ ] Selector visual de rol al registrarse con hint de pantalla destino
+[ ] Empresa obligatoria para custodio y cliente
+[ ] Recuperación contraseña: resetPasswordForEmail + deep link reset-password
+[ ] Cuenta desactivada (activo=false) → cierre sesión automático
+[ ] Redirección post-login según rol (getHomeRouteForRole)
+[ ] isRouteAllowedForRole bloquea acceso cruzado entre roles
+
+--- ROLES Y PERMISOS ---
+[ ] super_usuario: acceso total admin, crea jefe/custodio/cliente, papelera, limpieza
+[ ] jefe_custodios: admin sin papelera; crea custodio/cliente
+[ ] custodio: home, wizard, custody/*, privacidad; CRUD propias bitácoras
+[ ] cliente: portal cliente solo lectura; RLS por empresa_contratante
+[ ] Edge Function create-user / update-user con jerarquía de roles
+[ ] canManageUsers, canCreateBitacora, canManageTrash (solo super)
+
+--- INTERFAZ VISUAL POR ROL ---
+[ ] Paleta: fondo #0B1F17, superficie #143528, primario #1B7A4E, acento #F97316
+[ ] Custodio: tono emerald/verde, header DashboardShell
+[ ] Admin: acento naranja, KPIs MonitoringKpiStrip
+[ ] Cliente: tono sky/cian, banner empresa
+[ ] Componentes: AppButton, WizardShell, StepProgressBar, SegmentedTabs
+[ ] Animaciones: FadeInView, AnimatedPressable, AnimatedFab, Reanimated toasts
+[ ] EmptyState, FlowHintCard, ServiceCard, UserAvatar, ProfileModal
+
+--- CUSTODIO — HOME ---
+[ ] Lista servicios: pendiente / activo / completado (SegmentedTabs)
+[ ] KPIs y MonitoringDonutChart / MonitoringBarChart
+[ ] Pull-to-refresh + useAutoRefresh 20 s
+[ ] FAB crear nueva bitácora
+[ ] CustodyConfirmModal antes de iniciar
+[ ] Tap activo → custody/active; completado → custody/details
+
+--- WIZARD BITÁCORA (7 PASOS) ---
+[ ] Step 1: nombre, empresa, folio, origen/destino (LocationFormSection)
+[ ] CP 5 dígitos, calle, colonia, ciudad, municipio, estado, referencia, personal
+[ ] Validación: calle O GPS; preview Google Maps (GoogleMapsActions)
+[ ] Step 2: vehículo custodia (placas, color, celular), tiempos cita/presentación, odómetro inicial, intervalo reportes min
+[ ] Step 3: salida, verificación, llegada, fin, odómetro final, km, estadía
+[ ] Step 4: responsable origen/destino + SignaturePad SVG
+[ ] Step 5: operador 1 completo + firma + datos vehículo (placas, marca, modelo, remolques, sellos, eco tracto, pedimento, empresa)
+[ ] Step 6: operador 2 opcional (Omitir)
+[ ] Step 7: resumen + observaciones → insert bitácora estado pendiente, formulario JSONB
+
+--- CUSTODIA ACTIVA ---
+[ ] permissions: PermissionsPanel cámara + GPS obligatorios
+[ ] iniciarCustodia: estado activo, start_time, primer upsert live
+[ ] CircularTimer: countdown intervalo; expira → reporte auto; tap → manual
+[ ] ReportStatusBar: ok / offline / error
+[ ] LocationDisplay + mapa react-native-maps
+[ ] useLiveLocationTracker: GPS foreground ~30 s → custodio_ubicaciones_live
+[ ] Al background/unmount: clearLiveLocation (GPS solo en vivo con app abierta)
+[ ] Freshness: live <45 s, stale <3 min, offline (liveGpsStatus)
+[ ] Reporte: cámara → GPS → metadata stamp → upload Storage evidencias/{custodio}/{bitacora}/
+[ ] Insert evidencias: lat, lng, precision_m, altitud, observaciones, metadata JSON, storage_path
+[ ] SOSButton + modal: insert sos_alerts activa + ubicación
+[ ] ConfirmFinishModal → custody/finish
+[ ] Auto-refresh 15 s
+
+--- CIERRE DE CUSTODIA ---
+[ ] Tipo: acompañamiento (sin firma operador) vs custodia hasta destino (con firmas)
+[ ] Foto término con GPS + mapa + GoogleMapsActions
+[ ] SignaturePad operador y custodio → bucket firmas SVG
+[ ] Observaciones opcionales
+[ ] cerrarCustodia: completado, completed_at, clearLiveLocation
+
+--- ADMIN — PANEL ---
+[ ] admin/home: KPIs activas/SOS/pendientes/completadas, mapa flota, tarjetas nav
+[ ] admin/activos: monitoreo vivo, solo GPS live en mapa, badge app conectada
+[ ] admin/reportes: lista completados + preview mapa
+[ ] admin/reporte/[id]: reporte visual, mapa recorrido buildBitacoraRoutePoints, galería EvidenciaCompactCard, UN botón Exportar PDF
+[ ] admin/bitacoras: filtros estado
+[ ] admin/bitacora/[id]: editar nombre, ruta, unidad, empresa, intervalo, estado; link reporte visual
+[ ] admin/users + [id]: crear/editar usuarios, rol, activo, contraseña
+[ ] admin/sos: lista alertas, mapa, atendida/falsa alarma
+[ ] admin/papelera (super): restaurar, eliminar permanente, días restantes 7
+[ ] admin/limpieza (super): filtros masivos, soft delete, preview conteo
+[ ] Auto-refresh 15–20 s en pantallas clave
+
+--- CLIENTE ---
+[ ] cliente/home: KPIs, donut/bar, tabs programados/activas/historial, top 3 activos
+[ ] RLS: solo empresa del perfil
+[ ] cliente/details: solo lectura, GPS live poll 30 s, LivePulseBanner
+[ ] Mapa recorrido + GoogleMapsActions ruta completa
+[ ] EvidenciaReportCard compacta + timeline gráfica
+
+--- PDF ---
+[ ] Generación local: reportPdfService HTML → expo-print → expo-sharing
+[ ] Portada Servicons, datos servicio, origen/destino, tiempos, vehículo, operadores
+[ ] Firmas apertura y cierre embebidas
+[ ] Tabla resumen GPS + galería fotos 2 columnas con base64 desde Storage
+[ ] Alertas SOS incluidas
+[ ] useBitacoraPdfExport: toast info/éxito/error; un solo punto de exportación
+
+--- MAPAS Y GEO ---
+[ ] ReportMapView: markers origen, reportes, destino
+[ ] GoogleMapsActions: abrir, navegar, ruta multi-punto (variantes full/compact/inline)
+[ ] lib/geo.ts URLs nativas/web
+[ ] lib/ubicacionAddress.ts formato dirección México
+
+--- SUPABASE ---
+[ ] Tablas: profiles, bitacoras, evidencias, sos_alerts, custodio_ubicaciones_live
+[ ] Storage privado: evidencias (JPG), firmas (SVG)
+[ ] RLS por rol; soft delete deleted_at/deleted_by
+[ ] RPC purge_expired_trash
+[ ] Realtime en ubicaciones live
+[ ] Migraciones: evidencias v2, papelera, GPS live, datos demo
+
+--- n8n (CAPA PREPARADA) ---
+[ ] Webhooks: start-route, report-evidence, sos, finish-route, export-pdf, get-channels
+[ ] Flujo operativo actual: Supabase directo (datos nunca se pierden si n8n falla)
+[ ] ChannelPicker WhatsApp (campo whatsappGrupo en modelo, integración futura)
+
+--- TOASTS Y UX ---
+[ ] ToastProvider: success, error, warning, info; 5.5 s; máx 2; abajo pantalla
+[ ] Validaciones auth, firmas vacías, permisos denegados
+
+--- PRIVACIDAD ---
+[ ] /legal/privacidad y /(app)/privacidad
+[ ] PrivacyPolicyScreen reutilizable
+
+
+================================================================================
+D) TEXTOS CORTOS PARA OVERLAYS / TARJETAS EN EL VIDEO
+================================================================================
+
+TARJETA 1:  «4 roles · 1 plataforma»
+TARJETA 2:  «GPS en vivo · Solo con app abierta»
+TARJETA 3:  «Reportes automáticos · Foto + coordenadas»
+TARJETA 4:  «SOS · Alerta inmediata con ubicación»
+TARJETA 5:  «Firmas digitales SVG · Cierre legal»
+TARJETA 6:  «Portal cliente · Solo tu empresa»
+TARJETA 7:  «PDF completo · Un clic»
+TARJETA 8:  «Supabase · Seguro y escalable»
+TARJETA 9:  «Monitoreo admin · Mapa en tiempo real»
+TARJETA 10: «Wizard 7 pasos · Bitácora completa»
+
+SUBTÍTULO FOOTER (todo el video):
+«Servicons Mobile — Custodia profesional desde el campo hasta el escritorio»
+
+
+================================================================================
+E) VERSIÓN EXTENDIDA OPCIONAL (~3 MIN) — SI NECESITAS MÁS TIEMPO EN EXPOSICIÓN
+================================================================================
+
+[Párrafo 1 — Problema]
+Las empresas de custodia necesitan probar dónde estuvo cada unidad, qué fotos se
+tomaron, quién firmó la entrega y qué pasó si hubo emergencia. Servicons Mobile
+centraliza todo en una sola app móvil conectada a la nube.
+
+[Párrafo 2 — Custodio detallado]
+El custodio no pierde tiempo en papeles: abre la app, elige su servicio del día,
+confirma datos del operador y ruta, concede permisos una sola vez y entra al
+monitoreo. El temporizador circular es el centro de la pantalla — verde oscuro,
+alto contraste — y le dice exactamente cuándo toca el siguiente reporte. Si hay
+señal, la evidencia sube al instante; si no, la barra de estatus muestra amarillo
+“sin internet” o rojo “error”. El botón SOS en rosa/salmón nunca se oculta.
+
+[Párrafo 3 — Admin detallado]
+El administrador ve la flota en un mapa: solo aparecen custodios con la aplicación
+conectada en ese momento. Si un servicio está activo pero el celular no transmite,
+recibe alerta ámbar. Desde reporte visual reconstruye el recorrido completo — origen,
+cada punto GPS de cada foto, destino — y genera un PDF con la identidad visual
+Servicons: verde bosque, naranja acento, firmas y anexo fotográfico compacto.
+
+[Párrafo 4 — Cliente y seguridad]
+El cliente corporativo no ve datos de otros: Supabase Row Level Security filtra por
+empresa contratante. Observa sus cargas en tránsito con el mismo mapa y evidencias
+que el admin, pero sin poder editar nada. Super Usuario mantiene la higiene del
+sistema con papelera de siete días y limpieza programada.
+
+[Párrafo 5 — Cierre técnico]
+React Native multiplataforma, TypeScript tipado, componentes reutilizables,
+auto-refresh inteligente, integración preparada con n8n para WhatsApp, y arquitectura
+Supabase-first que garantiza que cada foto, cada coordenada y cada firma quede
+registrada aunque falle un webhook externo.
+
+
+================================================================================
+F) DATOS DEMO PARA LA DEMO EN VIVO (EXPOSICIÓN)
+================================================================================
+
+Usuarios de prueba (contraseña Demo2024!):
+  super@test.servicons.mx      → Panel admin completo + papelera
+  custodio@test.servicons.mx   → Operación en campo
+  cliente@test.servicons.mx    → Portal cliente
+
+Flujo recomendado en stand:
+  1. Login custodio → servicio activo o crear bitácora rápida
+  2. Mostrar timer + un reporte manual
+  3. Login admin → activos en mapa → reporte visual → PDF
+  4. Login cliente → ver mismo servicio en solo lectura
+
+
+================================================================================
+FIN DEL DOCUMENTO — SERVICONS MOBILE · GUION EXPOSICIÓN
+================================================================================

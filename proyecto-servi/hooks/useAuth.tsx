@@ -18,6 +18,7 @@ type SignUpParams = {
   password: string;
   nombre: string;
   role: UserRole;
+  requestedRole?: UserRole | null;
   empresa?: string;
 };
 
@@ -25,7 +26,10 @@ type AuthContextValue = {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (
+    email: string,
+    password: string,
+  ) => Promise<{ error: string | null; role?: UserRole }>;
   signUp: (params: SignUpParams) => Promise<{
     error: string | null;
     role?: UserRole;
@@ -125,13 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.session) setSession(data.session);
-      return { error: null };
+      return { error: null, role: userProfile.role };
     },
     [loadProfile],
   );
 
   const signUp = useCallback(
-    async ({ email, password, nombre, role, empresa }: SignUpParams) => {
+    async ({ email, password, nombre, role, requestedRole, empresa }: SignUpParams) => {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -139,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             nombre: nombre.trim(),
             role,
+            requested_role: requestedRole ?? null,
             empresa: empresa?.trim() ?? '',
           },
         },

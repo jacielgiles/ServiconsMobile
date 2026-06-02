@@ -9,9 +9,22 @@ type CreateUserBody = {
   email: string;
   password: string;
   nombre: string;
-  role: 'custodio' | 'jefe_custodios' | 'cliente';
+  role: 'super_usuario' | 'custodio' | 'jefe_custodios' | 'cliente';
   empresa?: string;
 };
+
+function canAssignRole(
+  actorRole: string,
+  targetRole: CreateUserBody['role'],
+): boolean {
+  if (actorRole === 'super_usuario') {
+    return ['super_usuario', 'jefe_custodios', 'custodio', 'cliente'].includes(targetRole);
+  }
+  if (actorRole === 'jefe_custodios') {
+    return ['custodio', 'cliente'].includes(targetRole);
+  }
+  return false;
+}
 
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -83,12 +96,7 @@ Deno.serve(async (req) => {
     return json({ error: 'Los custodios requieren empresa asignada' }, 400);
   }
 
-  const { data: canAssign, error: rpcError } = await supabaseAdmin.rpc('can_assign_role', {
-    actor_role: actorProfile.role,
-    target_role: role,
-  });
-
-  if (rpcError || !canAssign) {
+  if (!canAssignRole(actorProfile.role, role)) {
     return json({ error: 'No tienes permiso para crear ese rol' }, 403);
   }
 

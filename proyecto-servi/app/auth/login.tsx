@@ -17,6 +17,7 @@ import { AutofillTextInput, LoginAutofillForm } from '../../components/AutofillT
 import { FadeInView } from '../../components/FadeInView';
 import { Logo } from '../../components/Logo';
 import { useAuth } from '../../hooks/useAuth';
+import { getHomeRouteForRole } from '../../lib/roles';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -37,12 +38,17 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
 
-    const { error: signInError } = await signIn(email.trim(), password);
+    const { error: signInError, role } = await signIn(email.trim(), password);
 
     setLoading(false);
 
     if (signInError) {
       setError(signInError);
+      return;
+    }
+
+    if (role) {
+      router.replace(getHomeRouteForRole(role));
     }
   };
 
