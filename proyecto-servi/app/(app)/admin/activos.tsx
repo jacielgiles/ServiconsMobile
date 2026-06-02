@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { GoogleMapsActions } from '../../../components/GoogleMapsActions';
@@ -12,22 +12,33 @@ export default function AdminActivosScreen() {
   const [items, setItems] = useState<AdminActiveServiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data, error: listError } = await listAdminActiveServices();
     setItems(data);
     setError(listError);
-    setLoading(false);
+    setLastRefreshAt(new Date().toISOString());
+    if (!silent) setLoading(false);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      intervalRef.current = setInterval(() => {
+        void load(true);
+      }, 15_000);
+
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
     }, [load]),
   );
 
   const withGps = items.filter((item) => item.last_lat != null && item.last_lng != null);
+  const withLiveGps = items.filter((item) => item.location_source === 'live');
 
   return (
     <DashboardShell title="Servicios en vivo">
@@ -35,14 +46,19 @@ export default function AdminActivosScreen() {
         <Text className="text-3xl font-bold text-servi-texto">{items.length}</Text>
         <Text className="text-sm text-servi-suave">custodias activas ahora</Text>
         <Text className="mt-1 text-xs text-servi-acento">
-          {withGps.length} con ubicacion GPS reciente
+          {withLiveGps.length} con GPS en vivo · {withGps.length} con ubicacion en mapa
         </Text>
+        {lastRefreshAt ? (
+          <Text className="mt-1 text-[10px] text-servi-suave">
+            Actualizado: {new Date(lastRefreshAt).toLocaleTimeString()} · se refresca cada 15 s
+          </Text>
+        ) : null}
       </View>
 
       {withGps.length > 1 ? (
         <View className="mb-4">
           <ReportMapView
-            title="Vista general — ultimos puntos GPS"
+            title="Vista general — ubicaciones en vivo"
             height={220}
             points={withGps.map((item) => ({
               id: item.id,
@@ -79,6 +95,11 @@ export default function AdminActivosScreen() {
                   <View className="mb-1 flex-row items-center gap-2">
                     <View className="h-2 w-2 rounded-full bg-emerald-500" />
                     <Text className="text-xs font-semibold uppercase text-emerald-600">En curso</Text>
+                    {item.location_source === 'live' ? (
+                      <View className="rounded-full bg-emerald-500/20 px-2 py-0.5">
+                        <Text className="text-[10px] font-bold uppercase text-emerald-400">GPS en vivo</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text className="text-base font-semibold text-servi-texto">
                     {item.nombre ?? 'Sin nombre'}
@@ -110,21 +131,26 @@ export default function AdminActivosScreen() {
                       lat={item.last_lat}
                       lng={item.last_lng}
                       label={item.unidad ?? item.nombre ?? 'Unidad en vivo'}
-                      coordsLabel="Ultima ubicacion GPS"
+                      coordsLabel={
+                        item.location_source === 'live' ? 'Ubicacion en vivo' : 'Ultima evidencia GPS'
+                      }
                       variant="compact"
                     />
                   </View>
                   {item.last_report_at ? (
                     <View className="border-t border-servi-borde px-4 py-2">
                       <Text className="text-xs text-servi-suave">
-                        Reporte: {new Date(item.last_report_at).toLocaleString()}
+                        {item.location_source === 'live' ? 'En vivo' : 'Reporte'}:{' '}
+                        {new Date(item.last_report_at).toLocaleString()}
                       </Text>
                     </View>
                   ) : null}
                 </>
               ) : (
                 <View className="items-center border-t border-dashed border-servi-borde px-4 py-8">
-                  <Text className="text-sm text-servi-suave">Esperando primer reporte GPS...</Text>
+                  <Text className="text-sm text-servi-suave">
+                    Esperando ubicacion GPS del custodio...
+                  </Text>
                 </View>
               )}
             </Pressable>

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
@@ -17,6 +18,7 @@ type Props = {
 
 export function DashboardHeader({ title, role: roleProp }: Props) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { signOut, profile } = useAuth();
   const role = roleProp ?? profile?.role;
   const headerTitle = title ?? getDashboardTitleForRole(role);
@@ -24,6 +26,11 @@ export function DashboardHeader({ title, role: roleProp }: Props) {
   const [profileOpen, setProfileOpen] = useState(false);
 
   const closeMenu = () => setMenuOpen(false);
+
+  const navigate = (path: string) => {
+    closeMenu();
+    router.push(path as never);
+  };
 
   return (
     <>
@@ -68,19 +75,41 @@ export function DashboardHeader({ title, role: roleProp }: Props) {
           <View className="absolute right-3 z-20 mt-14 min-w-[210px] overflow-hidden rounded-xl border border-servi-borde bg-servi-superficie">
             {role === 'custodio' ? (
               <>
-                <MenuItem icon="list-outline" label="Mis servicios" onPress={closeMenu} />
+                <MenuItem
+                  icon="list-outline"
+                  label="Mis servicios"
+                  onPress={() => navigate('/(app)/home')}
+                />
                 <MenuItem
                   icon="time-outline"
                   label="Procesos pendientes"
-                  onPress={closeMenu}
+                  onPress={() => {
+                    closeMenu();
+                    router.push({ pathname: '/(app)/home', params: { filtro: 'pendiente' } });
+                  }}
                 />
               </>
             ) : null}
             {role === 'cliente' ? (
-              <MenuItem icon="business-outline" label="Portal cliente" onPress={closeMenu} />
+              <MenuItem
+                icon="business-outline"
+                label="Portal cliente"
+                onPress={() => navigate('/(app)/cliente/home')}
+              />
             ) : null}
             {(role === 'super_usuario' || role === 'jefe_custodios') && (
-              <MenuItem icon="grid-outline" label="Panel admin" onPress={closeMenu} />
+              <>
+                <MenuItem
+                  icon="grid-outline"
+                  label="Panel admin"
+                  onPress={() => navigate('/(app)/admin/home')}
+                />
+                <MenuItem
+                  icon="people-outline"
+                  label="Gestion de usuarios"
+                  onPress={() => navigate('/(app)/admin/users')}
+                />
+              </>
             )}
             <View className="h-px bg-servi-borde/50" />
             <MenuItem
@@ -92,8 +121,18 @@ export function DashboardHeader({ title, role: roleProp }: Props) {
               }}
             />
             <View className="h-px bg-servi-borde/50" />
-            <MenuItem icon="document-text-outline" label="Bitacoras" onPress={closeMenu} />
-            <MenuItem icon="shield-outline" label="Privacidad" onPress={closeMenu} />
+            {(role === 'super_usuario' || role === 'jefe_custodios') ? (
+              <MenuItem
+                icon="document-text-outline"
+                label="Bitacoras"
+                onPress={() => navigate('/(app)/admin/bitacoras')}
+              />
+            ) : null}
+            <MenuItem
+              icon="shield-outline"
+              label="Privacidad"
+              onPress={() => navigate('/(app)/privacidad')}
+            />
             <View className="h-px bg-servi-borde/50" />
             <MenuItem
               icon="log-out-outline"

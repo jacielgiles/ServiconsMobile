@@ -103,7 +103,11 @@ export async function updateUserAsAdmin(params: {
   userId: string;
   role?: UserRole;
   activo?: boolean;
-  empresa?: string;
+  empresa?: string | null;
+  nombre?: string;
+  celular?: string | null;
+  email?: string;
+  newPassword?: string;
 }): Promise<{ error: string | null }> {
   const {
     data: { session },
@@ -164,7 +168,55 @@ export type AdminActiveServiceRow = AdminBitacoraRow & {
   last_lat: number | null;
   last_lng: number | null;
   last_report_at: string | null;
+  location_source?: 'live' | 'evidencia' | null;
 };
+
+function mergeLocationForService(
+  bitacoraId: string,
+  custodioId: string,
+  evidenceLast: { lat: number; lng: number; at: string } | undefined,
+  liveRows: Array<{
+    custodio_id: string;
+    bitacora_id: string | null;
+    latitud: number;
+    longitud: number;
+    updated_at: string;
+  }>,
+): {
+  last_lat: number | null;
+  last_lng: number | null;
+  last_report_at: string | null;
+  location_source: 'live' | 'evidencia' | null;
+} {
+  const live =
+    liveRows.find((r) => r.bitacora_id === bitacoraId) ??
+    liveRows.find((r) => r.custodio_id === custodioId && r.bitacora_id === bitacoraId) ??
+    liveRows.find((r) => r.custodio_id === custodioId);
+
+  if (live) {
+    const liveTime = new Date(live.updated_at).getTime();
+    const evTime = evidenceLast ? new Date(evidenceLast.at).getTime() : 0;
+    if (!evidenceLast || liveTime >= evTime) {
+      return {
+        last_lat: live.latitud,
+        last_lng: live.longitud,
+        last_report_at: live.updated_at,
+        location_source: 'live',
+      };
+    }
+  }
+
+  if (evidenceLast) {
+    return {
+      last_lat: evidenceLast.lat,
+      last_lng: evidenceLast.lng,
+      last_report_at: evidenceLast.at,
+      location_source: 'evidencia',
+    };
+  }
+
+  return { last_lat: null, last_lng: null, last_report_at: null, location_source: null };
+}
 
 function indexEvidencias(
   rows: Array<{
@@ -240,7 +292,7 @@ export async function listAdminActiveServices(): Promise<{
   data: AdminActiveServiceRow[];
   error: string | null;
 }> {
-  const [bitacorasRes, evidenciasRes, profilesRes] = await Promise.all([
+  const [bitacorasRes, evidenciasRes, profilesRes, liveRes] = await Promise.all([
     supabase
       .from('bitacoras')
       .select(
@@ -250,26 +302,70 @@ export async function listAdminActiveServices(): Promise<{
       .order('created_at', { ascending: false }),
     supabase.from('evidencias').select('bitacora_id, latitud, longitud, timestamp'),
     supabase.from('profiles').select('id, nombre'),
+    supabase
+      .from('custodio_ubicaciones_live')
+      .select('custodio_id, bitacora_id, latitud, longitud, updated_at'),
   ]);
 
   if (bitacorasRes.error) return { data: [], error: bitacorasRes.error.message };
   if (evidenciasRes.error) return { data: [], error: evidenciasRes.error.message };
   if (profilesRes.error) return { data: [], error: profilesRes.error.message };
+  if (liveRes.error) return { data: [], error: liveRes.error.message };
 
   const { counts, last } = indexEvidencias(evidenciasRes.data ?? []);
   const names = new Map((profilesRes.data ?? []).map((p) => [p.id, p.nombre]));
+  const liveRows = liveRes.data ?? [];
 
   const data: AdminActiveServiceRow[] = (bitacorasRes.data ?? []).map((item) => {
-    const latest = last.get(item.id);
+    const loc = mergeLocationForService(item.id, item.custodio_id, last.get(item.id), liveRows);
     return {
       ...(item as AdminBitacoraRow),
       custodio_nombre: names.get(item.custodio_id) ?? null,
       evidencias_count: counts.get(item.id) ?? 0,
-      last_lat: latest?.lat ?? null,
-      last_lng: latest?.lng ?? null,
-      last_report_at: latest?.at ?? null,
+      ...loc,
     };
   });
+
+  return { data, error: null };
+}
+
+export type LiveCustodioMapRow = {
+  custodio_id: string;
+  custodio_nombre: string | null;
+  bitacora_id: string | null;
+  bitacora_nombre: string | null;
+  latitud: number;
+  longitud: number;
+  updated_at: string;
+};
+
+export async function listLiveCustodioLocations(): Promise<{
+  data: LiveCustodioMapRow[];
+  error: string | null;
+}> {
+  const [liveRes, profilesRes, bitacorasRes] = await Promise.all([
+    supabase
+      .from('custodio_ubicaciones_live')
+      .select('custodio_id, bitacora_id, latitud, longitud, updated_at')
+      .order('updated_at', { ascending: false }),
+    supabase.from('profiles').select('id, nombre').eq('role', 'custodio'),
+    supabase.from('bitacoras').select('id, nombre, estado').eq('estado', 'activo'),
+  ]);
+
+  if (liveRes.error) return { data: [], error: liveRes.error.message };
+
+  const names = new Map((profilesRes.data ?? []).map((p) => [p.id, p.nombre]));
+  const bitacoraNames = new Map((bitacorasRes.data ?? []).map((b) => [b.id, b.nombre]));
+
+  const data: LiveCustodioMapRow[] = (liveRes.data ?? []).map((row) => ({
+    custodio_id: row.custodio_id,
+    custodio_nombre: names.get(row.custodio_id) ?? null,
+    bitacora_id: row.bitacora_id,
+    bitacora_nombre: row.bitacora_id ? (bitacoraNames.get(row.bitacora_id) ?? null) : null,
+    latitud: row.latitud,
+    longitud: row.longitud,
+    updated_at: row.updated_at,
+  }));
 
   return { data, error: null };
 }
@@ -332,7 +428,7 @@ export async function listManagedProfiles(): Promise<{
 }> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nombre, email, role, empresa, created_at, activo')
+    .select('id, nombre, email, role, empresa, created_at, activo, celular')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -340,6 +436,97 @@ export async function listManagedProfiles(): Promise<{
   }
 
   return { data: data ?? [], error: null };
+}
+
+export async function getManagedProfile(userId: string): Promise<{
+  data: {
+    id: string;
+    nombre: string;
+    email: string | null;
+    celular: string | null;
+    role: UserRole;
+    empresa: string | null;
+    activo: boolean | null;
+    created_at: string;
+  } | null;
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, nombre, email, celular, role, empresa, activo, created_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: 'Usuario no encontrado' };
+  return { data: data as NonNullable<typeof data>, error: null };
+}
+
+export async function updateProfileFieldsAsAdmin(
+  userId: string,
+  fields: { nombre?: string; celular?: string | null; empresa?: string | null },
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('profiles').update(fields).eq('id', userId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+export type AdminBitacoraDetail = AdminBitacoraRow & {
+  custodio_nombre: string | null;
+  formulario: Record<string, unknown> | null;
+  report_interval_minutes: number | null;
+  start_time: string | null;
+  updated_at: string | null;
+};
+
+export async function getAdminBitacoraFull(bitacoraId: string): Promise<{
+  data: AdminBitacoraDetail | null;
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('bitacoras')
+    .select(
+      'id, nombre, ruta, unidad, empresa_contratante, estado, created_at, completed_at, custodio_id, formulario, report_interval_minutes, start_time, updated_at',
+    )
+    .eq('id', bitacoraId)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: 'Bitacora no encontrada' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('nombre')
+    .eq('id', data.custodio_id)
+    .maybeSingle();
+
+  return {
+    data: {
+      ...(data as AdminBitacoraRow),
+      custodio_nombre: profile?.nombre ?? null,
+      formulario: (data.formulario as Record<string, unknown> | null) ?? null,
+      report_interval_minutes: data.report_interval_minutes ?? null,
+      start_time: data.start_time ?? null,
+      updated_at: data.updated_at ?? null,
+    },
+    error: null,
+  };
+}
+
+export async function updateAdminBitacora(
+  bitacoraId: string,
+  updates: {
+    nombre?: string;
+    ruta?: string;
+    unidad?: string;
+    empresa_contratante?: string;
+    estado?: string;
+    report_interval_minutes?: number;
+  },
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('bitacoras').update(updates).eq('id', bitacoraId);
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 export type AdminSosRow = {

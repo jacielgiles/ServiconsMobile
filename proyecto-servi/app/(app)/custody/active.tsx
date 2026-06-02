@@ -12,6 +12,7 @@ import { SOSButton } from '../../../components/SOSButton';
 import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useEvidencias } from '../../../hooks/useEvidencias';
+import { useLiveLocationTracker } from '../../../hooks/useLiveLocationTracker';
 import { useLocation } from '../../../hooks/useLocation';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { supabase } from '../../../lib/supabaseClient';
@@ -33,6 +34,12 @@ export default function CustodyActiveScreen() {
   const [locationKey, setLocationKey] = useState(0);
   const [syncStatus, setSyncStatus] = useState<ReportSyncStatus>('ok');
   const [finishModal, setFinishModal] = useState(false);
+
+  const { lastUploadAt, uploadError } = useLiveLocationTracker({
+    custodioId: userId,
+    bitacoraId: id,
+    enabled: Boolean(id && userId && bitacora?.estado === 'activo'),
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -192,6 +199,23 @@ export default function CustodyActiveScreen() {
         </Text>
 
         <LocationDisplay refreshKey={locationKey} label="Mapa GPS en tiempo real" />
+
+        <View className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <View className="mb-1 flex-row items-center gap-2">
+            <View className="h-2 w-2 rounded-full bg-emerald-400" />
+            <Text className="text-xs font-semibold uppercase text-emerald-300">
+              Ubicacion en vivo activa
+            </Text>
+          </View>
+          <Text className="text-sm text-servi-suave">
+            {lastUploadAt
+              ? `Ultima subida a la base: ${new Date(lastUploadAt).toLocaleTimeString()}`
+              : 'Subiendo ubicacion GPS a administradores...'}
+          </Text>
+          {uploadError ? (
+            <Text className="mt-1 text-xs text-servi-peligro">Error GPS: {uploadError}</Text>
+          ) : null}
+        </View>
 
         <View className="mb-4 flex-row gap-3">
           <StatBox label="Reportes" value={String(evidenciasCount)} accent />

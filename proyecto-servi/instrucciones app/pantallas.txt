@@ -1,0 +1,272 @@
+================================================================
+SERVICONS MOBILE — MAPA COMPLETO DE PANTALLAS Y ROLES
+Documento de referencia visual (basado en wireframes del proyecto)
+Para Cursor: esto define QUÉ pantalla ve cada usuario y POR QUÉ
+================================================================
+
+## LA LÓGICA CENTRAL
+
+Esta app tiene un solo propósito: que una empresa de seguridad
+privada pueda rastrear, evidenciar y cerrar servicios de custodia
+desde el celular del custodio. Todo lo que se construye tiene
+una razón operativa real. No hay pantallas de adorno.
+
+El flujo completo es:
+  Login → (según rol) → pantalla propia del rol
+
+Cada rol tiene su universo separado. No se mezclan.
+
+================================================================
+ROL 1 — CUSTODIO
+El actor principal. Opera en campo.
+================================================================
+
+PANTALLA 1 — Welcome Screen
+  Qué ve: imagen de fondo, nombre/logo de la app, botón "Iniciar sesión"
+  Por qué existe: punto de entrada limpio antes de autenticarse
+
+PANTALLA 2 — Log In Screen
+  Qué ve: campo ID (email), campo Password, botón "Log in", link "Forgot password"
+  Por qué existe: autenticación real contra Supabase
+  Flujo especial: si presiona "Forgot password" → se envía link al
+  correo electrónico para recuperar contraseña de forma segura.
+  Al autenticarse exitosamente → va a Pantalla 3 (Home del custodio)
+
+PANTALLA 3 — Pantalla Principal / Home del Custodio
+  Qué ve:
+    - Header verde con logo y menú hamburguesa
+    - Tabla de servicios asignados con columnas "Unidad" y "Ruta"
+      (ejemplo: Unidad 937 | nombre ruta / Unidad 527 | nombre ruta)
+    - Botón "Iniciar Custodia"
+  Por qué existe: el custodio necesita ver los servicios que le tocan
+  ese día antes de salir a campo
+  Flujo: toca una unidad de la tabla → va a Pantalla 4 (Confirmación)
+  Menú hamburguesa despliega: Bitácoras, Datos, Privacidad,
+  Configuraciones, Procesos pendientes
+
+PANTALLA 4 — Modal de Confirmación de Custodia
+  Qué ve: popup/modal oscuro con los datos del servicio:
+    - Operador: Nombre
+    - Ruta: Nombre ruta
+    - Contacto: 000000000
+    - Cliente: cliente
+    - Botones "Cancelar" e "Iniciar"
+  Por qué existe: antes de iniciar el servicio el custodio debe
+  revisar que los datos son correctos. Evita iniciar el servicio
+  equivocado.
+  Flujo: presiona "Iniciar" → se dispara webhook a n8n (start-route)
+  que notifica al monitorista hora, lugar, inicio del servicio →
+  va a Pantalla 5 (Inicio de Servicio)
+
+PANTALLA 5 — Pantalla de Inicio de Servicio / Solicitud de Permisos
+  Qué ve: pantalla que pide permisos del dispositivo:
+    - Cámara (obligatorio para evidencias)
+    - Localizador/GPS (obligatorio para coordenadas)
+    - Micrófono (si se decide enviar audio — actualmente solo foto y mensaje)
+  Por qué existe: sin estos permisos la app no puede funcionar.
+  Se piden UNA sola vez. Si el usuario los niega, la app explica
+  por qué son necesarios.
+  Flujo: permisos concedidos → abre cámara para tomar la primera foto
+  Una vez tomada la foto → se guarda temporalmente en la base de datos
+  del teléfono → se envía todo al backend → va a Pantalla 6
+
+PANTALLA 6 — Pantalla de Servicio en Proceso (EL CORAZÓN)
+  Qué ve:
+    - Header verde con logo
+    - Temporizador circular grande en el centro: "Próximo reporte 00:00"
+      (cuenta regresiva basada en el intervalo configurado)
+    - El temporizador TAMBIÉN funciona como botón para reportar
+      manualmente (al presionarlo toma foto inmediatamente)
+    - Sección "Estatus de reporte" con iconos de estado:
+        · Ícono rojo + texto "Error, enviar manualmente"
+        · Ícono amarillo + texto "Falta internet"
+        · Ícono verde + texto "Al corriente"
+    - Texto "Custodia: [nombre de la unidad]" con ícono de cámara
+    - Botón SOS (izquierda, rosado/salmón grande) — SIEMPRE VISIBLE
+    - Botón "Terminar servicio" (derecha, oscuro)
+  Por qué existe: es la pantalla donde el custodio pasa la mayor
+  parte del servicio. El temporizador le indica cuándo reportar.
+  Los estados de reporte le dicen si sus evidencias están llegando.
+  El SOS es para emergencias reales.
+  Flujo automático: cuando el timer llega a 0 → toma foto automáticamente
+  → guarda en BD del teléfono → envía a backend → reinicia timer
+  Flujo manual: presiona el timer antes de que llegue a 0 → misma acción
+  Flujo SOS: presiona botón SOS → va a Pantalla 7 (SOS)
+  Flujo cierre: presiona "Terminar servicio" → va a Pantalla 8 (Confirmación cierre)
+
+PANTALLA 7 — Pantalla de Localización de Unidad (accesorio)
+  Qué ve: botón con URL para localizar, opciones Maps y Trackinstation
+  Por qué existe: herramienta de apoyo para ubicar unidades durante el servicio
+
+PANTALLA 8 — Modal de Confirmación de Cierre
+  Qué ve: popup "¿Seguro que quieres terminar este servicio?"
+  con botones "Cancelar" y "Terminar"
+  Por qué existe: evitar cierres accidentales en campo
+  Flujo: confirma → va a Pantalla 9 (Tipo de término)
+
+PANTALLA 9 — Modal de Tipo de Término
+  Qué ve: dos opciones:
+    - "Término por arribo, ubicación u otros + Finalizar" (acompañamiento)
+    - "Término de ruta + Finalizar" (custodia con destino)
+  Por qué existe: hay dos tipos de cierre:
+    · Acompañamiento: solo se envía reporte final con foto → NO pide firma
+    · Custodia hasta destino: pide foto + firma del operador
+  Flujo opción 1 (acompañamiento): → va a Pantalla 10 (Reporte de término)
+  Flujo opción 2 (custodia): → va a Pantalla 10 → Pantalla 11 → Pantalla 12
+
+PANTALLA 10 — Pantalla de Foto de Término
+  Qué ve: pantalla blanca con botón de cámara en el centro
+  "Se enviará el reporte con la fotografía y se guarda en el backend"
+  Por qué existe: evidencia final del punto de llegada con GPS
+  Flujo: toma foto → se guarda y envía → si es acompañamiento FIN
+  Si es custodia → va a Pantalla 11 (Firma)
+
+PANTALLA 11 — Pantalla de Firma de Término
+  Qué ve: canvas en blanco con texto diagonal "Firma del operador"
+  botón "Enviar" abajo
+  Por qué existe: el operador de la unidad custodiada firma en la pantalla
+  del custodio para certificar la entrega. Requisito legal del servicio.
+  Flujo: firma capturada en Base64 → va a Pantalla 12 (Observaciones)
+
+PANTALLA 12 — Pantalla de Reporte/Observaciones de Término
+  Qué ve: header verde, sección "Reporte/observaciones" con campo
+  de texto marcado como "Opcional", botón "Enviar"
+  Por qué existe: el custodio puede agregar notas finales sobre
+  incidentes, retrasos o condiciones del servicio
+  Flujo: presiona Enviar → todo se manda al backend → bitácora
+  queda en estado "completado" → vuelve al Home
+
+================================================================
+ROL 2 — SUPER USUARIO / JEFE DE CUSTODIOS
+El administrador. No sale a campo.
+================================================================
+
+PANTALLA A — Login
+  Misma pantalla que el custodio.
+  Al autenticarse con role super_usuario o jefe_custodios →
+  redirige a Pantalla B (Panel Admin)
+
+PANTALLA B — Panel de Control de Administración
+  Qué ve: lista completa de todos los servicios del sistema
+  con filtros por fecha, empresa, custodio, estado
+  Por qué existe: necesita ver qué está pasando con todos los
+  servicios en tiempo real
+
+PANTALLA C — Gestión de Usuarios
+  Super_usuario puede crear:
+    - Nuevos custodios
+    - Nuevos jefes de custodia
+    - Nuevos clientes
+  Jefe_custodios puede crear:
+    - Nuevos custodios
+    - Nuevos clientes
+    (NO puede crear otros jefes ni superusuarios)
+  Formulario de creación: nombre, email, contraseña, rol
+  Por qué existe: ningún usuario se registra solo. El admin
+  crea las cuentas y asigna roles. Control total.
+
+PANTALLA D — Detalle de Servicio (admin)
+  Puede ver el historial completo de cualquier bitácora:
+  fotos, coordenadas, tiempos, firmas, observaciones
+  Puede cancelar servicios activos remotamente
+  Puede exportar PDF del reporte
+
+PANTALLA E — Nueva Bitácora / Editor de Servicio
+  Se adapta a celular, separado correctamente
+  Formulario completo con todos los campos de la bitácora
+  (Monitoreo/admin es quien crea los IDs de servicios
+  según el wireframe original)
+
+================================================================
+ROL 3 — CLIENTE (empresa contratante)
+Solo lectura. Ve sus propios servicios.
+================================================================
+
+PANTALLA I — Login
+  Misma pantalla de login.
+  Al autenticarse con role cliente → redirige a Pantalla II
+
+PANTALLA II — Portal del Cliente
+  Qué ve:
+    - Servicios ACTIVOS de su empresa en este momento (tiempo real)
+    - Historial de servicios completados de su empresa
+  Filtro de seguridad: SOLO ve bitácoras donde empresa_contratante
+  coincide exactamente con la empresa registrada en su perfil.
+  Cero visibilidad de servicios de otros clientes. Nunca.
+  Por qué existe: el cliente quiere saber si su carga está en tránsito,
+  cuándo llegó, y tener registro de los servicios anteriores.
+
+PANTALLA III — Detalle de Servicio (cliente)
+  Qué ve: bitácora completa del servicio que seleccionó,
+  galería de fotos de evidencias con coordenadas,
+  estado actual, tiempos, operador asignado
+  Por qué existe: transparencia total hacia el cliente corporativo.
+  El cliente puede ver exactamente qué evidencias se tomaron,
+  con GPS y timestamps.
+
+================================================================
+CÓMO ESTÁ TODO CONECTADO
+================================================================
+
+El flujo completo de un servicio de punta a punta:
+
+1. Admin crea el servicio con los datos del cliente y la unidad
+2. El servicio aparece en el Home del custodio asignado
+3. Custodio confirma y presiona Iniciar → webhook dispara notificación
+4. Custodio toma foto inicial con GPS → va al Storage de Supabase
+5. Timer corre → cada N minutos dispara foto + GPS automáticamente
+6. Cada evidencia se sube al Storage y aparece en el portal del cliente
+7. Si hay emergencia: SOS → INSERT en sos_alerts → WhatsApp a jefes
+8. Al terminar: foto final + firma del operador + observaciones
+9. Bitácora queda en "completado" → cliente la puede ver con todo
+10. Admin puede exportar PDF del reporte completo con firmas
+
+Cada acción del custodio en campo tiene un destino:
+  Foto       → Storage de Supabase → visible para el cliente
+  GPS        → tabla evidencias → trazabilidad completa
+  SOS        → tabla sos_alerts + WhatsApp urgente a administradores
+  Firma      → Base64 en tabla bitacoras → parte del reporte legal
+  Cierre     → webhook finish-route → n8n genera PDF y lo manda
+
+n8n es el mensajero: recibe los webhooks de la app y
+distribuye por WhatsApp a los grupos correctos. Si n8n
+falla, los datos ya están en Supabase. Nunca se pierden.
+
+================================================================
+REGLA DE DISEÑO VISUAL
+================================================================
+
+Colores identificados en los wireframes:
+  Header/nav principal: verde (#22c55e o similar)
+  Fondos de pantalla principal: negro/oscuro (#0f172a)
+  Botón SOS: rosado/salmón (alto contraste, siempre visible)
+  Botón Terminar servicio: gris oscuro
+  Botones de acción primaria (Iniciar, Enviar): verde
+  Estados de reporte:
+    Al corriente  → verde
+    Falta internet → amarillo/naranja
+    Error         → rojo
+  Temporizador: circular, grande, centrado, protagonista visual
+
+NativeWind en TODOS los estilos, nunca StyleSheet.create.
+
+================================================================
+PARA CURSOR: QUÉ HACER CON ESTE DOCUMENTO
+================================================================
+
+No construyas desde cero. La app ya tiene estructura.
+Usa esto para:
+
+1. Verificar que cada pantalla listada existe en el proyecto
+2. Si existe pero no tiene el diseño correcto → corregirla
+3. Si no existe → crearla
+4. Asegurarte de que la navegación entre pantallas sigue
+   exactamente el flujo descrito arriba
+5. Que cada rol solo pueda acceder a SUS pantallas y nada más
+
+Empieza por confirmar qué pantallas existen y cuáles faltan,
+luego dime y empezamos en orden.
+
+================================================================
+FIN DEL DOCUMENTO
+================================================================

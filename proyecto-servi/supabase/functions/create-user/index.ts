@@ -79,6 +79,10 @@ Deno.serve(async (req) => {
     return json({ error: 'Los clientes requieren empresa' }, 400);
   }
 
+  if (role === 'custodio' && !empresa?.trim()) {
+    return json({ error: 'Los custodios requieren empresa asignada' }, 400);
+  }
+
   const { data: canAssign, error: rpcError } = await supabaseAdmin.rpc('can_assign_role', {
     actor_role: actorProfile.role,
     target_role: role,

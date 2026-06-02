@@ -42,6 +42,7 @@ DROP POLICY IF EXISTS "admin_jefe_evidencias_lectura" ON public.evidencias;
 DROP POLICY IF EXISTS "admin_jefe_storage_evidencias" ON storage.objects;
 DROP POLICY IF EXISTS "admin_jefe_storage_firmas" ON storage.objects;
 
+DROP TABLE IF EXISTS public.custodio_ubicaciones_live CASCADE;
 DROP TABLE IF EXISTS public.sos_alerts CASCADE;
 DROP TABLE IF EXISTS public.evidencias CASCADE;
 DROP TABLE IF EXISTS public.bitacoras CASCADE;
@@ -292,7 +293,44 @@ CREATE POLICY "admin_jefe_sos_lectura" ON public.sos_alerts
   );
 
 -- -----------------------------------------------------------------------------
--- 5. STORAGE
+-- 5. UBICACION EN VIVO — ultima posicion GPS del custodio (se actualiza ~c/30s)
+-- -----------------------------------------------------------------------------
+CREATE TABLE public.custodio_ubicaciones_live (
+  custodio_id   UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  bitacora_id   UUID REFERENCES public.bitacoras(id) ON DELETE SET NULL,
+  latitud       DOUBLE PRECISION NOT NULL,
+  longitud      DOUBLE PRECISION NOT NULL,
+  precision_m   DOUBLE PRECISION,
+  heading       DOUBLE PRECISION,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.custodio_ubicaciones_live ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "custodio_actualiza_ubicacion" ON public.custodio_ubicaciones_live
+  FOR ALL
+  USING (custodio_id = auth.uid())
+  WITH CHECK (custodio_id = auth.uid());
+
+CREATE POLICY "admin_jefe_ubicaciones_lectura" ON public.custodio_ubicaciones_live
+  FOR SELECT
+  USING (public.is_admin_or_jefe());
+
+CREATE POLICY "cliente_ubicaciones_empresa" ON public.custodio_ubicaciones_live
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.bitacoras b
+      JOIN public.profiles p ON p.id = auth.uid()
+      WHERE b.id = custodio_ubicaciones_live.bitacora_id
+        AND p.role = 'cliente'
+        AND p.empresa IS NOT NULL
+        AND p.empresa = b.empresa_contratante
+    )
+  );
+
+-- -----------------------------------------------------------------------------
+-- 6. STORAGE
 -- -----------------------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('evidencias', 'evidencias', false)
@@ -359,7 +397,7 @@ CREATE POLICY "admin_jefe_storage_firmas" ON storage.objects
   );
 
 -- -----------------------------------------------------------------------------
--- 6. INDICES
+-- 7. INDICES
 -- -----------------------------------------------------------------------------
 CREATE INDEX idx_bitacoras_custodio_estado
   ON public.bitacoras (custodio_id, estado, created_at DESC);
@@ -375,6 +413,36 @@ CREATE INDEX idx_evidencias_bitacora
 
 CREATE INDEX idx_sos_custodio
   ON public.sos_alerts (custodio_id, created_at DESC);
+
+CREATE INDEX idx_ubicaciones_live_bitacora
+  ON public.custodio_ubicaciones_live (bitacora_id);
+
+CREATE INDEX idx_ubicaciones_live_updated
+  ON public.custodio_ubicaciones_live (updated_at DESC);
+
+-- Realtime: mapa admin se actualiza al moverse el custodio
+ALTER TABLE public.custodio_ubicaciones_live REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.custodio_ubicaciones_live;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+  WHEN undefined_object THEN NULL;
+END $$;
+
+-- Admin puede editar bitacoras y alertas SOS
+DROP POLICY IF EXISTS "admin_jefe_bitacoras_update" ON public.bitacoras;
+CREATE POLICY "admin_jefe_bitacoras_update" ON public.bitacoras
+  FOR UPDATE
+  USING (public.is_admin_or_jefe())
+  WITH CHECK (public.is_admin_or_jefe());
+
+DROP POLICY IF EXISTS "admin_jefe_sos_update" ON public.sos_alerts;
+CREATE POLICY "admin_jefe_sos_update" ON public.sos_alerts
+  FOR UPDATE
+  USING (public.is_admin_or_jefe())
+  WITH CHECK (public.is_admin_or_jefe());
 
 -- =============================================================================
 -- FIN — Registro publico desde la app con rol en profiles

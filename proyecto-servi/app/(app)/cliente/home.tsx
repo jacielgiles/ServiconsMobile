@@ -1,18 +1,25 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native';
 
+import { AnimatedPressable } from '../../../components/AnimatedPressable';
 import { DashboardShell } from '../../../components/DashboardShell';
+import { EmptyState } from '../../../components/EmptyState';
+import { FadeInView } from '../../../components/FadeInView';
 import { LivePulseBanner } from '../../../components/LivePulseBanner';
+import { MonitoringBarChart } from '../../../components/MonitoringBarChart';
+import { MonitoringDonutChart } from '../../../components/MonitoringDonutChart';
 import { MonitoringKpiStrip } from '../../../components/MonitoringKpiStrip';
+import { SegmentedTabs } from '../../../components/SegmentedTabs';
 import { ServiceCard } from '../../../components/ServiceCard';
+import { countBitacorasByEstado, getBitacoraTotals } from '../../../lib/bitacoraStats';
 import { useAuth } from '../../../hooks/useAuth';
 import { useBitacora } from '../../../hooks/useBitacora';
 import type { BitacoraResumen } from '../../../types/models';
 
-type Tab = 'activo' | 'completado';
+type Tab = 'pendiente' | 'activo' | 'completado';
 
-/** Pantalla II — Portal del cliente */
+/** Pantalla II — Portal del cliente (monitoreo completo de su empresa) */
 export default function ClienteHomeScreen() {
   const router = useRouter();
   const { profile } = useAuth();
@@ -32,98 +39,131 @@ export default function ClienteHomeScreen() {
     }, [load]),
   );
 
-  const filtered = bitacoras.filter((b) =>
-    tab === 'activo' ? b.estado === 'activo' || b.estado === 'pendiente' : b.estado === 'completado',
-  );
+  const totals = useMemo(() => getBitacoraTotals(bitacoras), [bitacoras]);
+  const chartSegments = useMemo(() => countBitacorasByEstado(bitacoras), [bitacoras]);
 
-  const enTransito = bitacoras.filter((b) => b.estado === 'activo' || b.estado === 'pendiente').length;
-  const enVivo = bitacoras.filter((b) => b.estado === 'activo').length;
-  const historial = bitacoras.filter((b) => b.estado === 'completado').length;
+  const filtered = bitacoras.filter((b) => b.estado === tab);
+  const activosList = bitacoras.filter((b) => b.estado === 'activo');
+
+  const tabs = useMemo(
+    () => [
+      { key: 'pendiente' as const, label: 'Programados', count: totals.pendiente },
+      { key: 'activo' as const, label: 'En vivo', count: totals.activo },
+      { key: 'completado' as const, label: 'Historial', count: totals.completado },
+    ],
+    [totals],
+  );
 
   return (
     <DashboardShell role="cliente">
-      <LivePulseBanner
-        count={enVivo}
-        label="custodias activas de tu empresa — mapa y evidencias en tiempo real"
-        tone="sky"
-      />
-
-      <MonitoringKpiStrip
-        items={[
-          { label: 'En transito', value: enTransito, icon: 'car-outline', tone: 'info' },
-          { label: 'En vivo', value: enVivo, icon: 'radio', tone: enVivo > 0 ? 'live' : 'neutral' },
-          { label: 'Historial', value: historial, icon: 'archive-outline', tone: 'neutral' },
-          { label: 'Total', value: bitacoras.length, icon: 'layers-outline', tone: 'neutral' },
-        ]}
-      />
-
-      <View className="mb-4 rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4">
-        <Text className="text-xs uppercase text-sky-300">Empresa</Text>
-        <Text className="text-lg font-bold text-servi-texto">{profile?.empresa ?? 'Sin empresa'}</Text>
-        <Text className="mt-1 text-xs text-servi-suave">
-          Solo ves servicios de tu empresa — lectura exclusiva
-        </Text>
-      </View>
-
-      <View className="mb-4 flex-row gap-2">
-        {(['activo', 'completado'] as Tab[]).map((key) => (
-          <Pressable
-            key={key}
-            className={`flex-1 items-center rounded-2xl border py-3 ${
-              tab === key ? 'border-sky-500 bg-sky-500/15' : 'border-servi-borde bg-servi-superficie'
-            }`}
-            onPress={() => setTab(key)}
-          >
-            <Text className={`font-bold ${tab === key ? 'text-sky-400' : 'text-servi-texto'}`}>
-              {bitacoras.filter((b) =>
-                key === 'activo'
-                  ? b.estado === 'activo' || b.estado === 'pendiente'
-                  : b.estado === 'completado',
-              ).length}
-            </Text>
-            <Text className="text-[10px] uppercase text-servi-suave">
-              {key === 'activo' ? 'En transito' : 'Historial'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {loading ? (
-        <ActivityIndicator color="#0EA5E9" />
-      ) : error ? (
-        <Text className="text-servi-peligro">{error}</Text>
-      ) : filtered.length === 0 ? (
-        <View className="mt-4 rounded-xl border border-dashed border-servi-borde p-6">
-          <Text className="text-center text-servi-suave">
-            {tab === 'activo'
-              ? 'No hay servicios activos de tu empresa ahora.'
-              : 'Aun no hay servicios completados en tu historial.'}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              setRefreshing(false);
+            }}
+            tintColor="#0EA5E9"
+          />
+        }
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
+        <FadeInView className="mb-4 rounded-2xl border border-sky-500/40 bg-sky-500/10 p-5">
+          <Text className="text-[10px] uppercase text-sky-300">Centro de monitoreo</Text>
+          <Text className="text-2xl font-bold text-servi-texto">{profile?.empresa ?? 'Tu empresa'}</Text>
+          <Text className="mt-2 text-sm text-servi-suave">
+            Programados, en vivo e historial de custodias contratadas — mapas GPS y evidencias.
           </Text>
-        </View>
-      ) : (
-        <ScrollView
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                await load();
-                setRefreshing(false);
-              }}
-              tintColor="#0EA5E9"
-            />
-          }
-          contentContainerStyle={{ paddingBottom: 24 }}
-        >
-          {filtered.map((b) => (
+        </FadeInView>
+
+        <LivePulseBanner
+          count={totals.activo}
+          label="custodias activas ahora — ubicacion en vivo en mapa"
+          tone="sky"
+        />
+
+        <MonitoringKpiStrip
+          items={[
+            { label: 'Programados', value: totals.pendiente, icon: 'calendar-outline', tone: 'info' },
+            { label: 'En vivo', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
+            { label: 'Completados', value: totals.completado, icon: 'archive-outline', tone: 'neutral' },
+            { label: 'Total', value: totals.total, icon: 'layers-outline', tone: 'neutral' },
+          ]}
+        />
+
+        <FadeInView delay={120}>
+          <MonitoringDonutChart title="Panorama de servicios de tu empresa" segments={chartSegments} />
+        </FadeInView>
+        <FadeInView delay={160}>
+          <MonitoringBarChart title="Volumen por estado" segments={chartSegments} />
+        </FadeInView>
+
+        {activosList.length > 0 ? (
+          <FadeInView delay={200} className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+            <Text className="mb-2 text-sm font-semibold text-emerald-400">En monitoreo ahora</Text>
+            {activosList.slice(0, 3).map((b) => (
+              <AnimatedPressable
+                key={b.id}
+                className="mb-2 flex-row items-center justify-between rounded-xl bg-servi-fondo/80 px-3 py-2"
+                onPress={() => router.push(`/(app)/cliente/details?id=${b.id}`)}
+              >
+                <View className="flex-1">
+                  <Text className="font-semibold text-servi-texto">{b.nombre ?? b.unidad ?? 'Servicio'}</Text>
+                  <Text className="text-xs text-servi-suave">{b.ruta ?? '—'}</Text>
+                </View>
+                <View className="h-2 w-2 rounded-full bg-emerald-400" />
+              </AnimatedPressable>
+            ))}
+          </FadeInView>
+        ) : null}
+
+        <SegmentedTabs tabs={tabs} active={tab} onChange={setTab} accent="sky" />
+
+        <Text className="mb-3 text-sm font-semibold uppercase text-sky-400">
+          {tab === 'pendiente'
+            ? 'Servicios programados (aun no iniciados)'
+            : tab === 'activo'
+              ? 'Servicios en monitoreo en vivo'
+              : 'Servicios completados'}
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator color="#0EA5E9" />
+        ) : error ? (
+          <Text className="text-servi-peligro">{error}</Text>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={tab === 'activo' ? 'radio-outline' : tab === 'pendiente' ? 'time-outline' : 'archive-outline'}
+            title={
+              tab === 'activo'
+                ? 'Sin monitoreo en vivo'
+                : tab === 'pendiente'
+                  ? 'Sin servicios programados'
+                  : 'Historial vacio'
+            }
+            description={
+              tab === 'activo'
+                ? 'Cuando un custodio inicie una custodia de tu empresa, la veras aqui con GPS en tiempo real.'
+                : tab === 'pendiente'
+                  ? 'El custodio crea la bitacora; aparece aqui hasta que la inicie en campo.'
+                  : 'Los servicios cerrados con evidencias apareceran en esta seccion.'
+            }
+            tone="sky"
+          />
+        ) : (
+          filtered.map((b, index) => (
             <ServiceCard
               key={b.id}
               bitacora={b}
+              index={index}
               onPress={() => router.push(`/(app)/cliente/details?id=${b.id}`)}
             />
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+      </ScrollView>
     </DashboardShell>
   );
 }

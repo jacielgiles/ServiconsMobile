@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Text, View } from 'react-native';
 
+import { FadeInView } from './FadeInView';
+
 type Kpi = {
   label: string;
   value: string | number;
@@ -18,16 +20,20 @@ const toneStyles = {
 export function MonitoringKpiStrip({ items }: { items: Kpi[] }) {
   return (
     <View className="mb-4 flex-row flex-wrap gap-2">
-      {items.map((item) => {
+      {items.map((item, index) => {
         const t = toneStyles[item.tone ?? 'neutral'];
         return (
-          <View key={item.label} className={`min-w-[46%] flex-1 rounded-2xl border p-3 ${t.bg}`}>
+          <FadeInView
+            key={item.label}
+            delay={60 + index * 50}
+            className={`min-w-[46%] flex-1 rounded-2xl border p-3 ${t.bg}`}
+          >
             <View className="mb-1 flex-row items-center gap-1.5">
               <Ionicons name={item.icon} size={16} color={t.icon} />
               <Text className="text-[10px] font-bold uppercase text-servi-suave">{item.label}</Text>
             </View>
             <Text className={`text-2xl font-black ${t.text}`}>{item.value}</Text>
-          </View>
+          </FadeInView>
         );
       })}
     </View>

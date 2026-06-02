@@ -42,13 +42,13 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (signInError) {
-      setError('Credenciales incorrectas. Revisa tu correo y contrasena.');
+      setError(signInError);
     }
   };
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      setError('Escribe tu correo para enviar el enlace de recuperacion.');
+      setError('Escribe tu correo arriba para enviar el enlace de recuperacion.');
       return;
     }
 
@@ -64,7 +64,7 @@ export default function LoginScreen() {
 
     Alert.alert(
       'Correo enviado',
-      'Revisa tu bandeja de entrada para restablecer tu contrasena.',
+      'Revisa tu bandeja (y spam). Abre el enlace para establecer una nueva contrasena.',
     );
   };
 
@@ -79,10 +79,17 @@ export default function LoginScreen() {
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 24 }}
           keyboardShouldPersistTaps="handled"
         >
+          <Pressable className="mb-4 py-2" onPress={() => router.replace('/')}>
+            <Text className="text-servi-acento">← Volver al inicio</Text>
+          </Pressable>
+
           <FadeInView className="mb-8 items-center">
             <Logo size={72} />
             <Text className="mt-6 text-3xl font-bold text-servi-texto">Iniciar sesion</Text>
             <Text className="mt-2 text-center text-servi-suave">Accede a Servicons Mobile</Text>
+            <Text className="mt-3 text-center text-xs leading-5 text-servi-suave">
+              Entras a la pantalla de tu nivel: Super usuario, Jefe de custodias, Custodio o Cliente.
+            </Text>
           </FadeInView>
 
           <LoginAutofillForm>
@@ -118,10 +125,7 @@ export default function LoginScreen() {
                   autofillRole="password"
                   nativeID="login-password"
                 />
-                <Pressable
-                  className="px-4 py-3"
-                  onPress={() => setShowPassword((v) => !v)}
-                >
+                <Pressable className="px-4 py-3" onPress={() => setShowPassword((v) => !v)}>
                   <Text className="text-sm text-servi-acento">{showPassword ? 'Ocultar' : 'Ver'}</Text>
                 </Pressable>
               </View>
@@ -129,13 +133,28 @@ export default function LoginScreen() {
           </LoginAutofillForm>
 
           {error ? (
-            <Text className="mb-4 text-center text-sm text-servi-peligro">{error}</Text>
+            <View className="mb-4 rounded-xl border border-servi-peligro/30 bg-servi-peligro/10 px-3 py-2">
+              <Text className="text-center text-sm text-servi-peligro">{error}</Text>
+            </View>
           ) : null}
 
           <AppButton label="Iniciar sesion" variant="accent" onPress={handleLogin} loading={loading} />
 
-          <Pressable className="mt-3 items-center py-2" onPress={handleForgotPassword}>
+          <Pressable className="mt-3 items-center py-2" onPress={handleForgotPassword} disabled={loading}>
             <Text className="text-sm text-servi-acento">Olvidaste tu contrasena?</Text>
+          </Pressable>
+
+          <Pressable
+            className="mt-4 items-center rounded-xl border border-servi-borde py-3"
+            onPress={() => router.push('/auth/register')}
+          >
+            <Text className="text-servi-texto">
+              ¿No tienes cuenta? <Text className="font-bold text-servi-acento">Crear cuenta</Text>
+            </Text>
+          </Pressable>
+
+          <Pressable className="mt-3 items-center py-2" onPress={() => router.push('/legal/privacidad')}>
+            <Text className="text-xs text-servi-suave">Politica de privacidad</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

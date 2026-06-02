@@ -44,11 +44,31 @@ export function getHomeRouteForRole(role: UserRole | null | undefined): string {
   }
 }
 
+/** Texto visible al registrarse: que pantalla abrira segun el rol */
+export function getRoleDestinationHint(role: UserRole): string {
+  switch (role) {
+    case 'super_usuario':
+      return 'Panel de control — administracion total';
+    case 'jefe_custodios':
+      return 'Supervision de custodias — panel admin';
+    case 'custodio':
+      return 'Mis servicios — operacion en campo';
+    case 'cliente':
+      return 'Portal del cliente — consulta de bitacoras';
+    default:
+      return 'Pantalla segun tu rol';
+  }
+}
+
 export function isRouteAllowedForRole(
   role: UserRole | null | undefined,
   routePath: string,
 ): boolean {
   if (!role) return false;
+
+  if (routePath.includes('privacidad')) {
+    return true;
+  }
 
   if (role === 'super_usuario' || role === 'jefe_custodios') {
     return routePath.includes('admin');

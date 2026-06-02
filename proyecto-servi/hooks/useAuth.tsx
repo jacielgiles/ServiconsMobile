@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { Session } from '@supabase/supabase-js';
 import {
   createContext,
@@ -17,6 +18,7 @@ type SignUpParams = {
   password: string;
   nombre: string;
   role: UserRole;
+  empresa?: string;
 };
 
 type AuthContextValue = {
@@ -36,6 +38,7 @@ type AuthContextValue = {
     empresa?: string | null;
   }) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -88,16 +91,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      if (error) return { error: error.message };
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+          return { error: 'Correo o contrasena incorrectos.' };
+        }
+        if (msg.includes('email not confirmed')) {
+          return {
+            error:
+              'Debes confirmar tu correo primero. Revisa tu bandeja o desactiva Confirm email en Supabase.',
+          };
+        }
+        return { error: error.message };
+      }
+
+      if (!data.user) return { error: 'No se pudo iniciar sesion.' };
+
+      const userProfile = await loadProfile(data.user.id);
+
+      if (!userProfile) {
+        await supabase.auth.signOut();
+        return {
+          error:
+            'Tu cuenta existe pero no tiene perfil. Contacta al administrador o registrate de nuevo.',
+        };
+      }
+
+      if (userProfile.activo === false) {
+        await supabase.auth.signOut();
+        setProfile(null);
+        setSession(null);
+        return { error: 'Tu cuenta esta desactivada. Contacta al administrador.' };
+      }
+
       if (data.session) setSession(data.session);
-      if (data.user) await loadProfile(data.user.id);
       return { error: null };
     },
     [loadProfile],
   );
 
   const signUp = useCallback(
-    async ({ email, password, nombre, role }: SignUpParams) => {
+    async ({ email, password, nombre, role, empresa }: SignUpParams) => {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -105,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           data: {
             nombre: nombre.trim(),
             role,
+            empresa: empresa?.trim() ?? '',
           },
         },
       });
@@ -120,6 +155,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           nombre: nombre.trim(),
           email: email.trim(),
           role,
+          empresa:
+            role === 'cliente' || role === 'custodio' ? empresa?.trim() ?? null : null,
         });
 
         if (profileError) {
@@ -162,14 +199,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const resetPassword = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    const redirectTo = Linking.createURL('/auth/reset-password');
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    if (error) return { error: error.message };
+    return { error: null };
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string) => {
+    if (newPassword.length < 8) {
+      return { error: 'La contrasena debe tener al menos 8 caracteres.' };
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { error: error.message };
     return { error: null };
   }, []);
 
   const value = useMemo(
-    () => ({ session, profile, loading, signIn, signUp, signOut, updateProfile, resetPassword }),
-    [session, profile, loading, signIn, signUp, signOut, updateProfile, resetPassword],
+    () => ({ session, profile, loading, signIn, signUp, signOut, updateProfile, resetPassword, updatePassword }),
+    [session, profile, loading, signIn, signUp, signOut, updateProfile, resetPassword, updatePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

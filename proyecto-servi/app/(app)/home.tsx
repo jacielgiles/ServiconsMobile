@@ -1,18 +1,26 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
 
+import { AnimatedFab } from '../../components/AnimatedFab';
 import { CustodyConfirmModal } from '../../components/CustodyConfirmModal';
 import { DashboardHeader } from '../../components/DashboardShell';
+import { EmptyState } from '../../components/EmptyState';
+import { FlowHintCard } from '../../components/FlowHintCard';
+import { FadeInView } from '../../components/FadeInView';
 import { LivePulseBanner } from '../../components/LivePulseBanner';
+import { MonitoringBarChart } from '../../components/MonitoringBarChart';
+import { MonitoringDonutChart } from '../../components/MonitoringDonutChart';
 import { MonitoringKpiStrip } from '../../components/MonitoringKpiStrip';
+import { SegmentedTabs } from '../../components/SegmentedTabs';
+import { ServiceCard } from '../../components/ServiceCard';
+import { countBitacorasByEstado, getBitacoraTotals } from '../../lib/bitacoraStats';
 import { getDashboardTitleForRole } from '../../lib/roles';
 import { useAuth } from '../../hooks/useAuth';
 import { useBitacora, type BitacoraDetalle } from '../../hooks/useBitacora';
@@ -20,12 +28,6 @@ import { createEmptyFormulario, useBitacoraStore } from '../../store/useBitacora
 import type { BitacoraResumen } from '../../types/models';
 
 type Filtro = 'pendiente' | 'activo' | 'completado';
-
-const tabs: { key: Filtro; label: string }[] = [
-  { key: 'pendiente', label: 'Pendientes' },
-  { key: 'activo', label: 'Activos' },
-  { key: 'completado', label: 'Completados' },
-];
 
 /** Pantalla 3 — Home del custodio */
 export default function HomeScreen() {
@@ -63,12 +65,17 @@ export default function HomeScreen() {
   }, [loadBitacoras]);
 
   const filtradas = bitacoras.filter((b) => b.estado === filtro);
+  const totals = useMemo(() => getBitacoraTotals(bitacoras), [bitacoras]);
+  const chartSegments = useMemo(() => countBitacorasByEstado(bitacoras), [bitacoras]);
 
-  const counts = {
-    pendiente: bitacoras.filter((b) => b.estado === 'pendiente').length,
-    activo: bitacoras.filter((b) => b.estado === 'activo').length,
-    completado: bitacoras.filter((b) => b.estado === 'completado').length,
-  };
+  const tabs = useMemo(
+    () => [
+      { key: 'pendiente' as const, label: 'Pendientes', count: totals.pendiente },
+      { key: 'activo' as const, label: 'Activos', count: totals.activo },
+      { key: 'completado' as const, label: 'Completados', count: totals.completado },
+    ],
+    [totals],
+  );
 
   const openService = async (item: BitacoraResumen) => {
     if (item.estado === 'activo') {
@@ -94,115 +101,95 @@ export default function HomeScreen() {
     <View className="flex-1 bg-servi-fondo">
       <DashboardHeader title={getDashboardTitleForRole(profile?.role)} role={profile?.role} />
 
-      <View className="px-4">
-        <LivePulseBanner
-          count={counts.activo}
-          label="custodias activas — reportes GPS en mapa"
-          tone="emerald"
-        />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />
+        }
+      >
+        <View className="px-4 pt-2">
+          <FadeInView className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-900/20 p-4">
+            <Text className="text-[10px] uppercase text-emerald-300">Operador en campo</Text>
+            <Text className="text-xl font-bold text-white">{profile?.nombre ?? 'Custodio'}</Text>
+            {profile?.empresa ? (
+              <Text className="mt-1 text-sm text-emerald-200">Empresa: {profile.empresa}</Text>
+            ) : null}
+            <Text className="mt-2 text-xs text-emerald-100/80">
+              {totals.total} servicios registrados · {totals.activo} en monitoreo ahora
+            </Text>
+          </FadeInView>
 
-        <MonitoringKpiStrip
-          items={[
-            { label: 'Pendientes', value: counts.pendiente, icon: 'time-outline', tone: 'info' },
-            { label: 'En vivo', value: counts.activo, icon: 'radio', tone: counts.activo > 0 ? 'live' : 'neutral' },
-            { label: 'Completados', value: counts.completado, icon: 'checkmark-done', tone: 'neutral' },
-            { label: 'Total', value: bitacoras.length, icon: 'layers-outline', tone: 'neutral' },
-          ]}
-        />
-      </View>
+          <LivePulseBanner
+            count={totals.activo}
+            label="custodias activas — reportes GPS en mapa"
+            tone="emerald"
+          />
 
-      <View className="mx-4 mb-2 flex-row gap-2">
-        {tabs.map((tab) => {
-          const count = bitacoras.filter((b) => b.estado === tab.key).length;
-          return (
-            <Pressable
-              key={tab.key}
-              className={`flex-1 items-center rounded-2xl border py-3 ${
-                filtro === tab.key
-                  ? 'border-emerald-500 bg-emerald-500/15'
-                  : 'border-servi-borde bg-servi-superficie'
-              }`}
-              onPress={() => setFiltro(tab.key)}
-            >
-              <Text
-                className={`text-2xl font-bold ${
-                  filtro === tab.key ? 'text-emerald-400' : 'text-servi-texto'
-                }`}
-              >
-                {count}
-              </Text>
-              <Text
-                className={`text-[10px] font-semibold uppercase ${
-                  filtro === tab.key ? 'text-emerald-400' : 'text-servi-suave'
-                }`}
-              >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+          <MonitoringKpiStrip
+            items={[
+              { label: 'Pendientes', value: totals.pendiente, icon: 'time-outline', tone: 'info' },
+              { label: 'En vivo', value: totals.activo, icon: 'radio', tone: totals.activo > 0 ? 'live' : 'neutral' },
+              { label: 'Completados', value: totals.completado, icon: 'checkmark-done', tone: 'neutral' },
+              { label: 'Total', value: totals.total, icon: 'layers-outline', tone: 'neutral' },
+            ]}
+          />
 
-      {loading ? (
-        <ActivityIndicator className="mt-8" color="#22C55E" />
-      ) : (
-        <ScrollView
-          className="flex-1 px-4"
-          contentContainerStyle={{ paddingBottom: 120 }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22C55E" />
-          }
-        >
-          {error ? <Text className="mb-4 text-servi-peligro">{error}</Text> : null}
+          <FadeInView delay={140}>
+            <MonitoringDonutChart title="Resumen de tus servicios" segments={chartSegments} />
+          </FadeInView>
+          <FadeInView delay={180}>
+            <MonitoringBarChart title="Servicios por estado" segments={chartSegments} />
+          </FadeInView>
 
-          <View className="mb-2 flex-row border-b border-servi-borde pb-2">
-            <Text className="flex-1 text-xs font-bold uppercase text-emerald-400">Unidad</Text>
-            <Text className="flex-[2] text-xs font-bold uppercase text-emerald-400">Ruta</Text>
-            <Text className="w-16 text-right text-xs font-bold uppercase text-emerald-400">Estado</Text>
-          </View>
+          {filtro === 'pendiente' ? <FlowHintCard tone="emerald" /> : null}
+        </View>
 
-          {filtradas.length === 0 ? (
-            <View className="mt-8 rounded-xl border border-dashed border-servi-borde p-6">
-              <Text className="text-center text-servi-suave">
-                No hay servicios {tabs.find((t) => t.key === filtro)?.label.toLowerCase()}.{'\n'}
-                Toca + para crear uno.
-              </Text>
-            </View>
+        <View className="px-4">
+          <SegmentedTabs tabs={tabs} active={filtro} onChange={setFiltro} accent="emerald" />
+
+          <Text className="mb-3 text-sm font-semibold uppercase text-emerald-400">
+            Registro de servicios — {tabs.find((t) => t.key === filtro)?.label}
+          </Text>
+
+          {loading ? (
+            <ActivityIndicator color="#22C55E" />
+          ) : error ? (
+            <Text className="mb-4 text-servi-peligro">{error}</Text>
+          ) : filtradas.length === 0 ? (
+            <EmptyState
+              icon={filtro === 'pendiente' ? 'add-circle-outline' : 'search-outline'}
+              title={
+                filtro === 'pendiente'
+                  ? 'Sin servicios pendientes'
+                  : filtro === 'activo'
+                    ? 'Nada en monitoreo ahora'
+                    : 'Sin historial completado'
+              }
+              description={
+                filtro === 'pendiente'
+                  ? 'Toca el boton + abajo para crear una bitacora. Tu la inicias cuando estes listo en campo.'
+                  : filtro === 'activo'
+                    ? 'Cuando confirmes e inicies una custodia pendiente, aparecera aqui con GPS en vivo.'
+                    : 'Los servicios cerrados con foto y firmas apareceran en esta lista.'
+              }
+              tone="emerald"
+            />
           ) : (
-            filtradas.map((b) => (
-              <Pressable
-                key={b.id}
-                className="flex-row items-center border-b border-servi-borde/50 py-4 active:bg-servi-superficie/50"
-                onPress={() => openService(b)}
-              >
-                <Text className="flex-1 font-semibold text-servi-texto">{b.unidad ?? '—'}</Text>
-                <Text className="flex-[2] text-sm text-servi-suave" numberOfLines={2}>
-                  {b.ruta ?? b.nombre ?? '—'}
-                </Text>
-                <Text className="w-16 text-right text-[10px] font-bold uppercase text-servi-acento">
-                  {b.estado === 'pendiente' ? 'Nuevo' : b.estado === 'activo' ? 'Vivo' : 'Fin'}
-                </Text>
-              </Pressable>
+            filtradas.map((b, index) => (
+              <ServiceCard key={b.id} bitacora={b} index={index} onPress={() => openService(b)} />
             ))
           )}
+        </View>
+      </ScrollView>
 
-          {filtro === 'pendiente' && filtradas.length > 0 ? (
-            <Text className="mt-4 text-center text-xs text-servi-suave">
-              Toca una fila → confirmar → permisos → monitoreo en mapa
-            </Text>
-          ) : null}
-        </ScrollView>
-      )}
-
-      <Pressable
-        className="absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full bg-emerald-600 active:opacity-90"
+      <AnimatedFab
+        pulse={totals.pendiente === 0 && totals.total === 0}
         onPress={() => {
           useBitacoraStore.setState({ formulario: createEmptyFormulario() });
           router.push('/(app)/bitacora/wizard/step1');
         }}
-      >
-        <Text className="text-3xl font-bold text-white">+</Text>
-      </Pressable>
+      />
 
       <CustodyConfirmModal
         visible={Boolean(confirmId)}

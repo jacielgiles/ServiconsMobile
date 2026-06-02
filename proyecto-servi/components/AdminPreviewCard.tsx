@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+
+import { AnimatedPressable } from './AnimatedPressable';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -25,9 +27,9 @@ export function AdminPreviewCard({
     accent === 'warning' ? '#DC2626' : accent === 'muted' ? '#64748B' : '#F97316';
 
   return (
-    <Pressable
+    <AnimatedPressable
       className={`mb-3 overflow-hidden rounded-2xl border border-servi-borde bg-servi-superficie ${
-        interactive ? 'active:opacity-90' : 'opacity-75'
+        interactive ? '' : 'opacity-75'
       }`}
       onPress={onPress}
       disabled={!onPress}
@@ -63,6 +65,6 @@ export function AdminPreviewCard({
           </Text>
         ))}
       </View>
-    </Pressable>
+    </AnimatedPressable>
   );
 }

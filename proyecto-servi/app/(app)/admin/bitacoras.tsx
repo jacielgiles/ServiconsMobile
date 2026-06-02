@@ -76,7 +76,7 @@ export default function AdminBitacorasScreen() {
             <Pressable
               key={item.id}
               className="mb-3 rounded-xl border border-servi-borde bg-servi-superficie p-4 active:opacity-80"
-              onPress={() => router.push(`/(app)/admin/reporte/${item.id}`)}
+              onPress={() => router.push(`/(app)/admin/bitacora/${item.id}`)}
             >
               <View className="mb-2 flex-row items-center justify-between">
                 <Text className="flex-1 text-base font-semibold text-servi-texto">

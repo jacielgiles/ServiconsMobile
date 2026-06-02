@@ -9,7 +9,11 @@ type UpdateUserBody = {
   userId: string;
   role?: 'custodio' | 'jefe_custodios' | 'cliente';
   activo?: boolean;
-  empresa?: string;
+  empresa?: string | null;
+  nombre?: string;
+  celular?: string | null;
+  email?: string;
+  newPassword?: string;
 };
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -72,7 +76,7 @@ Deno.serve(async (req) => {
     return json({ error: 'JSON invalido' }, 400);
   }
 
-  const { userId, role, activo, empresa } = body;
+  const { userId, role, activo, empresa, nombre, celular, email, newPassword } = body;
 
   if (!userId) {
     return json({ error: 'Falta userId' }, 400);
@@ -84,7 +88,7 @@ Deno.serve(async (req) => {
 
   const { data: targetProfile, error: targetError } = await supabaseAdmin
     .from('profiles')
-    .select('role, empresa')
+    .select('role, empresa, email')
     .eq('id', userId)
     .single();
 
@@ -96,7 +100,15 @@ Deno.serve(async (req) => {
     return json({ error: 'No se puede modificar un super usuario' }, 403);
   }
 
-  const updates: Record<string, unknown> = {};
+  const profileUpdates: Record<string, unknown> = {};
+
+  if (nombre?.trim()) {
+    profileUpdates.nombre = nombre.trim();
+  }
+
+  if (celular !== undefined) {
+    profileUpdates.celular = celular?.trim() || null;
+  }
 
   if (role) {
     const { data: canAssign, error: rpcError } = await supabaseAdmin.rpc('can_assign_role', {
@@ -108,30 +120,65 @@ Deno.serve(async (req) => {
       return json({ error: 'No tienes permiso para asignar ese rol' }, 403);
     }
 
-    updates.role = role;
+    profileUpdates.role = role;
 
     if (role === 'cliente') {
       const empresaValue = empresa?.trim() || targetProfile.empresa;
       if (!empresaValue) {
         return json({ error: 'Los clientes requieren empresa' }, 400);
       }
-      updates.empresa = empresaValue;
+      profileUpdates.empresa = empresaValue;
+    } else if (empresa !== undefined) {
+      profileUpdates.empresa = empresa?.trim() || null;
     }
+  } else if (empresa !== undefined) {
+    profileUpdates.empresa = empresa?.trim() || null;
   }
 
   if (typeof activo === 'boolean') {
-    updates.activo = activo;
+    if (userId === caller.id) {
+      return json({ error: 'No puedes desactivar tu propia cuenta' }, 400);
+    }
+    profileUpdates.activo = activo;
   }
 
-  if (Object.keys(updates).length === 0) {
+  if (email?.trim() && email.trim() !== targetProfile.email) {
+    const { error: emailError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      email: email.trim(),
+      email_confirm: true,
+    });
+    if (emailError) {
+      return json({ error: emailError.message }, 400);
+    }
+    profileUpdates.email = email.trim();
+  }
+
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      return json({ error: 'La contrasena debe tener al menos 6 caracteres' }, 400);
+    }
+    const { error: passError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (passError) {
+      return json({ error: passError.message }, 400);
+    }
+  }
+
+  if (Object.keys(profileUpdates).length === 0 && !newPassword && !email?.trim()) {
     return json({ error: 'Nada que actualizar' }, 400);
   }
 
-  const { error: updateError } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
+  if (Object.keys(profileUpdates).length > 0) {
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update(profileUpdates)
+      .eq('id', userId);
 
-  if (updateError) {
-    return json({ error: updateError.message }, 400);
+    if (updateError) {
+      return json({ error: updateError.message }, 400);
+    }
   }
 
-  return json({ ok: true, userId, ...updates });
+  return json({ ok: true, userId, ...profileUpdates });
 });

@@ -23,15 +23,8 @@ import {
   isEmailValid,
   isPasswordValid,
 } from '../../lib/authValidation';
-import { getHomeRouteForRole } from '../../lib/roles';
+import { getHomeRouteForRole, getRoleDestinationHint, ROLES } from '../../lib/roles';
 import type { UserRole } from '../../types/models';
-
-const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
-  { value: 'super_usuario', label: 'Super usuario' },
-  { value: 'jefe_custodios', label: 'Jefe de custodios' },
-  { value: 'custodio', label: 'Custodio' },
-  { value: 'cliente', label: 'Cliente' },
-];
 
 const NOMBRE_RULES = (nombre: string) => [
   { id: 'name-min', label: 'Minimo 3 caracteres', met: nombre.trim().length >= 3 },
@@ -51,6 +44,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<UserRole>('custodio');
+  const [empresa, setEmpresa] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +70,15 @@ export default function RegisterScreen() {
       return;
     }
 
+    if ((role === 'cliente' || role === 'custodio') && !empresa.trim()) {
+      setError(
+        role === 'cliente'
+          ? 'Los clientes deben indicar su empresa.'
+          : 'Indica la empresa a la que perteneces como custodio.',
+      );
+      return;
+    }
+
     setLoading(true);
 
     const { error: signUpError, role: savedRole, pendingConfirmation } = await signUp({
@@ -83,6 +86,7 @@ export default function RegisterScreen() {
       password,
       nombre: nombre.trim(),
       role,
+      empresa: role === 'cliente' || role === 'custodio' ? empresa.trim() : undefined,
     });
 
     setLoading(false);
@@ -95,12 +99,16 @@ export default function RegisterScreen() {
     if (pendingConfirmation) {
       Alert.alert(
         'Cuenta creada',
-        'Confirma tu correo o desactiva Confirm email en Supabase. Luego inicia sesion.',
+        `Rol: ${ROLES.find((r) => r.value === role)?.label ?? role}.\nConfirma tu correo si Supabase lo pide, luego inicia sesion y entraras a: ${getRoleDestinationHint(role)}`,
         [{ text: 'Ir a login', onPress: () => router.replace('/auth/login') }],
       );
       return;
     }
 
+    Alert.alert(
+      'Bienvenido',
+      `Entrando como ${ROLES.find((r) => r.value === (savedRole ?? role))?.label ?? role}.`,
+    );
     router.replace(getHomeRouteForRole(savedRole ?? role));
   };
 
@@ -115,15 +123,15 @@ export default function RegisterScreen() {
           contentContainerStyle={{ paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable className="py-4" onPress={() => router.back()}>
-            <Text className="font-medium text-servi-acento">Volver</Text>
+          <Pressable className="py-4" onPress={() => router.replace('/')}>
+            <Text className="font-medium text-servi-acento">← Volver al inicio</Text>
           </Pressable>
 
           <FadeInView className="mb-6 items-center">
             <Logo size={64} />
             <Text className="mt-4 text-2xl font-bold text-servi-texto">Crear cuenta</Text>
             <Text className="mt-1 text-center text-sm text-servi-suave">
-              Los requisitos aplican solo al registrarte
+              Elige tu nivel de acceso. Al entrar veras la pantalla correspondiente a tu rol.
             </Text>
           </FadeInView>
 
@@ -153,9 +161,9 @@ export default function RegisterScreen() {
             isValid={emailOk}
           />
 
-          <Text className="mb-2 text-sm font-medium text-servi-suave">Rol de acceso</Text>
-          <View className="mb-4 flex-row flex-wrap gap-2">
-            {ROLE_OPTIONS.map((option) => (
+          <Text className="mb-2 text-sm font-medium text-servi-suave">Nivel de acceso (rol)</Text>
+          <View className="mb-3 flex-row flex-wrap gap-2">
+            {ROLES.map((option) => (
               <Pressable
                 key={option.value}
                 className={`rounded-xl border px-3 py-2.5 ${
@@ -175,6 +183,26 @@ export default function RegisterScreen() {
               </Pressable>
             ))}
           </View>
+
+          <View className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+            <Text className="text-[10px] uppercase text-emerald-400">Pantalla al iniciar sesion</Text>
+            <Text className="text-sm font-medium text-servi-texto">
+              {getRoleDestinationHint(role)}
+            </Text>
+            <Text className="mt-1 text-xs text-servi-suave">
+              {ROLES.find((r) => r.value === role)?.description}
+            </Text>
+          </View>
+
+          {(role === 'cliente' || role === 'custodio') ? (
+            <AuthTextField
+              label={role === 'custodio' ? 'Empresa asignada' : 'Empresa'}
+              value={empresa}
+              onChangeText={setEmpresa}
+              placeholder="Nombre de la empresa contratante"
+              delay={150}
+            />
+          ) : null}
 
           <AuthTextField
             label="Contrasena"

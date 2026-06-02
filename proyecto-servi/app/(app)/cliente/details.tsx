@@ -6,9 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EvidenciaReportCard } from '../../../components/EvidenciaReportCard';
 import { GoogleMapsActions } from '../../../components/GoogleMapsActions';
 import { LivePulseBanner } from '../../../components/LivePulseBanner';
+import { MonitoringBarChart } from '../../../components/MonitoringBarChart';
 import { MonitoringKpiStrip } from '../../../components/MonitoringKpiStrip';
 import { ReportMapView } from '../../../components/ReportMapView';
 import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
+import type { EstadoSegment } from '../../../lib/bitacoraStats';
+import { getLiveLocationByBitacora, type LiveLocationRow } from '../../../services/locationService';
 
 /** Pantalla III — Detalle de servicio (cliente, solo lectura) */
 export default function ClienteDetailsScreen() {
@@ -20,6 +23,7 @@ export default function ClienteDetailsScreen() {
     Awaited<ReturnType<typeof getBitacoraEvidencias>>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [liveLocation, setLiveLocation] = useState<LiveLocationRow | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -31,6 +35,22 @@ export default function ClienteDetailsScreen() {
       },
     );
   }, [id, getBitacoraDetalle, getBitacoraEvidencias]);
+
+  useEffect(() => {
+    if (!id || bitacora?.estado !== 'activo') {
+      setLiveLocation(null);
+      return;
+    }
+
+    const fetchLive = async () => {
+      const { data } = await getLiveLocationByBitacora(id);
+      if (data) setLiveLocation(data);
+    };
+
+    void fetchLive();
+    const timer = setInterval(fetchLive, 30_000);
+    return () => clearInterval(timer);
+  }, [id, bitacora?.estado]);
 
   if (loading) {
     return (
@@ -49,6 +69,29 @@ export default function ClienteDetailsScreen() {
     label: `Reporte ${i + 1}`,
   }));
 
+  const mapPoints =
+    liveLocation && isLive
+      ? [
+          ...routePoints,
+          {
+            id: 'live',
+            lat: liveLocation.latitud,
+            lng: liveLocation.longitud,
+            label: 'Ubicacion en vivo',
+          },
+        ]
+      : routePoints;
+
+  const reportTimelineSegments: EstadoSegment[] = [...evidencias]
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .slice(-6)
+    .map((_, i) => ({
+      key: `r-${i}`,
+      label: `R${i + 1}`,
+      value: i + 1,
+      color: '#0EA5E9',
+    }));
+
   return (
     <SafeAreaView className="flex-1 bg-servi-fondo">
       <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 32 }}>
@@ -63,15 +106,33 @@ export default function ClienteDetailsScreen() {
         </View>
 
         {isLive ? (
-          <LivePulseBanner count={1} label="Monitoreo en curso — el recorrido se actualiza con cada reporte" tone="sky" />
+          <LivePulseBanner
+            count={1}
+            label={
+              liveLocation
+                ? `GPS en vivo · actualizado ${new Date(liveLocation.updated_at).toLocaleTimeString()}`
+                : 'Monitoreo en curso — esperando ubicacion en vivo del custodio'
+            }
+            tone="sky"
+          />
         ) : null}
 
         <MonitoringKpiStrip
           items={[
             { label: 'Reportes GPS', value: evidencias.length, icon: 'camera-outline', tone: 'info' },
             { label: 'Estado', value: bitacora?.estado ?? '—', icon: 'flag-outline', tone: isLive ? 'live' : 'neutral' },
+            { label: 'Unidad', value: bitacora?.unidad ?? '—', icon: 'bus-outline', tone: 'neutral' },
+            { label: 'Empresa', value: bitacora?.empresa_contratante?.slice(0, 12) ?? '—', icon: 'business-outline', tone: 'neutral' },
           ]}
         />
+
+        {reportTimelineSegments.length > 0 ? (
+          <MonitoringBarChart
+            title="Linea de reportes GPS (ultimos puntos)"
+            segments={reportTimelineSegments}
+            height={120}
+          />
+        ) : null}
 
         <Section title="Resumen">
           <Row label="Estado" value={bitacora?.estado ?? '—'} />
@@ -79,26 +140,53 @@ export default function ClienteDetailsScreen() {
           <Row label="Operador" value={form?.operador1?.nombre ?? '—'} />
         </Section>
 
-        {routePoints.length > 0 ? (
+        {mapPoints.length > 0 ? (
           <View className="mb-4">
             <Text className="mb-2 font-semibold text-servi-texto">Recorrido GPS</Text>
             <ReportMapView
-              points={routePoints}
+              points={mapPoints}
               height={200}
-              title="Evidencias en mapa"
+              title={liveLocation && isLive ? 'Recorrido + ubicacion en vivo' : 'Evidencias en mapa'}
               showOpenMaps={false}
             />
             <View className="mt-3">
               <GoogleMapsActions
-                lat={routePoints[routePoints.length - 1].lat}
-                lng={routePoints[routePoints.length - 1].lng}
+                lat={
+                  liveLocation && isLive
+                    ? liveLocation.latitud
+                    : routePoints[routePoints.length - 1].lat
+                }
+                lng={
+                  liveLocation && isLive
+                    ? liveLocation.longitud
+                    : routePoints[routePoints.length - 1].lng
+                }
                 label={bitacora?.nombre ?? 'Servicio'}
                 routePoints={routePoints}
-                coordsLabel="Ultimo punto del recorrido"
+                coordsLabel={
+                  liveLocation && isLive ? 'Ubicacion en vivo del custodio' : 'Ultimo punto del recorrido'
+                }
                 variant="full"
                 showRoute
               />
             </View>
+          </View>
+        ) : liveLocation && isLive ? (
+          <View className="mb-4">
+            <Text className="mb-2 font-semibold text-servi-texto">Ubicacion en vivo</Text>
+            <ReportMapView
+              points={[
+                {
+                  id: 'live',
+                  lat: liveLocation.latitud,
+                  lng: liveLocation.longitud,
+                  label: 'Custodio en vivo',
+                },
+              ]}
+              height={200}
+              title="GPS en tiempo real"
+              showOpenMaps={false}
+            />
           </View>
         ) : null}
 

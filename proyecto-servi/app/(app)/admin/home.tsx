@@ -1,9 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, Text } from 'react-native';
 
 import { AdminPreviewCard } from '../../../components/AdminPreviewCard';
+import { AnimatedPressable } from '../../../components/AnimatedPressable';
 import { DashboardShell } from '../../../components/DashboardShell';
+import { FadeInView } from '../../../components/FadeInView';
+import { FlowHintCard } from '../../../components/FlowHintCard';
 import { MonitoringKpiStrip } from '../../../components/MonitoringKpiStrip';
 import { ReportMapView } from '../../../components/ReportMapView';
 import { useAuth } from '../../../hooks/useAuth';
@@ -39,6 +42,8 @@ export default function AdminHomeScreen() {
       loadStats();
     }, [loadStats]),
   );
+
+  const withGps = activos.filter((a) => a.last_lat != null && a.last_lng != null);
 
   return (
     <DashboardShell role={profile?.role}>
@@ -81,12 +86,12 @@ export default function AdminHomeScreen() {
               ]}
             />
 
-            {(() => {
-              const withGps = activos.filter((a) => a.last_lat != null && a.last_lng != null);
-              if (withGps.length === 0) return null;
-              return (
-                <Pressable
-                  className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/30 active:opacity-95"
+            <FlowHintCard tone="orange" />
+
+            {withGps.length > 0 ? (
+              <FadeInView delay={200}>
+                <AnimatedPressable
+                  className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/30"
                   onPress={() => router.push('/(app)/admin/activos')}
                 >
                   <ReportMapView
@@ -100,77 +105,85 @@ export default function AdminHomeScreen() {
                       label: item.unidad ?? item.nombre ?? 'Unidad',
                     }))}
                   />
-                  <View className="bg-emerald-900/40 px-4 py-2">
-                    <Text className="text-center text-xs font-semibold text-emerald-300">
-                      Toca para ver monitoreo en vivo completo →
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })()}
+                  <Text className="bg-emerald-900/40 py-2 text-center text-xs font-semibold text-emerald-300">
+                    Toca para monitoreo en vivo completo →
+                  </Text>
+                </AnimatedPressable>
+              </FadeInView>
+            ) : null}
 
-            <AdminPreviewCard
-              icon="people-outline"
-              title="Gestion de usuarios"
-              metric={String(stats.users.total)}
-              metricLabel="cuentas registradas"
-              previewLines={[
-                `${stats.users.custodios} custodios · ${stats.users.clientes} clientes`,
-                `${stats.users.jefes} jefes de custodia en el sistema`,
-              ]}
-              onPress={() => router.push('/(app)/admin/users')}
-            />
-
-            <AdminPreviewCard
-              icon="radio-outline"
-              title="En vivo"
-              metric={String(stats.bitacoras.activas)}
-              metricLabel="servicios activos ahora"
-              previewLines={[
-                'Mapa con ultima ubicacion GPS de cada custodio',
-                'Se actualiza con cada reporte del servicio',
-              ]}
-              accent={stats.bitacoras.activas > 0 ? 'warning' : 'default'}
-              onPress={() => router.push('/(app)/admin/activos')}
-            />
-
-            <AdminPreviewCard
-              icon="document-text-outline"
-              title="Bitacoras"
-              metric={String(stats.bitacoras.total)}
-              metricLabel="registradas en total"
-              previewLines={[
-                `${stats.bitacoras.pendientes} pendientes · ${stats.bitacoras.completadas} completadas`,
-                'Lista completa con filtros por estado',
-              ]}
-              onPress={() => router.push('/(app)/admin/bitacoras')}
-            />
-
-            <AdminPreviewCard
-              icon="warning-outline"
-              title="Alertas SOS"
-              metric={String(stats.sos.activas)}
-              metricLabel="alertas activas"
-              previewLines={[
-                stats.sos.activas > 0
-                  ? 'Hay emergencias que requieren atencion'
-                  : 'Sin emergencias activas en este momento',
-              ]}
-              accent={stats.sos.activas > 0 ? 'warning' : 'default'}
-              onPress={() => router.push('/(app)/admin/sos')}
-            />
-
-            <AdminPreviewCard
-              icon="bar-chart-outline"
-              title="Reportes"
-              metric={String(stats.bitacoras.completadas)}
-              metricLabel="servicios cerrados"
-              previewLines={[
-                `${stats.bitacoras.total} servicios registrados en el sistema`,
-                'Ver evidencias con GPS por servicio completado',
-              ]}
-              onPress={() => router.push('/(app)/admin/reportes')}
-            />
+            {[
+              {
+                icon: 'people-outline' as const,
+                title: 'Gestion de usuarios',
+                metric: String(stats.users.total),
+                metricLabel: 'cuentas registradas',
+                lines: [
+                  `${stats.users.custodios} custodios · ${stats.users.clientes} clientes`,
+                  `${stats.users.jefes} jefes de custodia en el sistema`,
+                ],
+                route: '/(app)/admin/users' as const,
+                accent: 'default' as const,
+              },
+              {
+                icon: 'radio-outline' as const,
+                title: 'En vivo',
+                metric: String(stats.bitacoras.activas),
+                metricLabel: 'servicios activos ahora',
+                lines: ['Mapa con ubicacion GPS en tiempo real', 'Se actualiza cada ~30 segundos'],
+                route: '/(app)/admin/activos' as const,
+                accent: stats.bitacoras.activas > 0 ? ('warning' as const) : ('default' as const),
+              },
+              {
+                icon: 'document-text-outline' as const,
+                title: 'Bitacoras',
+                metric: String(stats.bitacoras.total),
+                metricLabel: 'registradas en total',
+                lines: [
+                  `${stats.bitacoras.pendientes} pendientes (creadas por custodios)`,
+                  `${stats.bitacoras.completadas} completadas`,
+                ],
+                route: '/(app)/admin/bitacoras' as const,
+                accent: 'default' as const,
+              },
+              {
+                icon: 'warning-outline' as const,
+                title: 'Alertas SOS',
+                metric: String(stats.sos.activas),
+                metricLabel: 'alertas activas',
+                lines: [
+                  stats.sos.activas > 0
+                    ? 'Hay emergencias que requieren atencion'
+                    : 'Sin emergencias activas en este momento',
+                ],
+                route: '/(app)/admin/sos' as const,
+                accent: stats.sos.activas > 0 ? ('warning' as const) : ('default' as const),
+              },
+              {
+                icon: 'bar-chart-outline' as const,
+                title: 'Reportes',
+                metric: String(stats.bitacoras.completadas),
+                metricLabel: 'servicios cerrados',
+                lines: [
+                  `${stats.bitacoras.total} servicios registrados en el sistema`,
+                  'Evidencias con GPS por servicio completado',
+                ],
+                route: '/(app)/admin/reportes' as const,
+                accent: 'default' as const,
+              },
+            ].map((card, index) => (
+              <FadeInView key={card.title} delay={240 + index * 70}>
+                <AdminPreviewCard
+                  icon={card.icon}
+                  title={card.title}
+                  metric={card.metric}
+                  metricLabel={card.metricLabel}
+                  previewLines={card.lines}
+                  accent={card.accent}
+                  onPress={() => router.push(card.route)}
+                />
+              </FadeInView>
+            ))}
           </>
         ) : null}
       </ScrollView>

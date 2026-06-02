@@ -23,6 +23,7 @@ import { useBitacora, type BitacoraDetalle } from '../../../hooks/useBitacora';
 import { useEvidencias } from '../../../hooks/useEvidencias';
 import { useLocation } from '../../../hooks/useLocation';
 import { buildFirmaObject } from '../../../lib/signatures';
+import { clearLiveLocation } from '../../../services/locationService';
 import { finishRoute, signatureToBase64 } from '../../../services/n8nService';
 
 type CloseType = 'acompanamiento' | 'ruta';
@@ -159,6 +160,8 @@ export default function CustodyFinishScreen() {
 
       const ok = await cerrarCustodia(id, session.user.id, firmaOperadorJson, firmaCustodioJson);
       if (!ok) throw new Error('No se pudo cerrar el servicio.');
+
+      await clearLiveLocation(session.user.id);
 
       const remoteJid = bitacora?.formulario?.whatsappGrupo?.remoteJid;
       if (remoteJid) {
